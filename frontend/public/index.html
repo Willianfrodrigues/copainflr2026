@@ -374,7 +374,8 @@ tbody td{padding:11px 15px;font-size:13px;}
           <button class="btn-g" onclick="adminAdd()" style="height:38px;">+ Adicionar</button>
         </div>
         <table><thead><tr><th>Usuário</th><th>Nome</th><th>Palavras-chave</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
-      </div><!-- fim admin-panel -->
+      </div><!-- fim adm-section usuarios -->
+    </div><!-- fim admin-panel -->
 
     <!-- DASHBOARD -->
     <div id="dash-section" style="display:none;">
@@ -1360,6 +1361,5 @@ async function adminDel(username){
   if(res?.ok){toast('Removido.');loadAdminUsers();}else toast(res?.error||'Erro.','red');
 }
 </script>
-</div><!-- fim app -->
 </body>
 </html>
