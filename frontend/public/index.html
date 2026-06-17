@@ -977,9 +977,7 @@ function startApp(){
     // 1. Busca config do backend
     loadConfig().then(()=>{
       renderCampHeader();
-      // 2. Carrega dados paid e orgânico em paralelo
       loadData();
-      loadOrganico(true); // silent=true, sem spinner
     }).catch(()=>{
       renderCampHeader();
       loadData();
@@ -1022,13 +1020,17 @@ async function loadData(){
   loading(true);if($('upd-btn'))$('upd-btn').disabled=true;
   try{
     const p=`start_date=${start}&end_date=${end}`;
-    // Carrega BQ + orgânico em paralelo para ter totais disponíveis no KPI
+    // Carrega BQ e orgânico em paralelo
     const[kpi,series,byCamp,byInfl]=await Promise.all([
       apiFetch(`/api/data?${p}&type=kpi`),
       apiFetch(`/api/data?${p}&type=timeseries`),
       apiFetch(`/api/data?${p}&type=by_campaign`),
       apiFetch(`/api/data?${p}&type=by_influencer`),
     ]);
+    // Carrega orgânico em paralelo (sem spinner, sem await)
+    const orgPromise = (!Object.keys(_orgData).length) ? loadOrganico(true) : Promise.resolve();
+    // Aguarda orgânico antes de renderizar KPIs para ter a soma correta
+    await orgPromise;
     if(kpi){window._lastKpi=kpi;renderKPIs(kpi);}
     if(series)renderCharts(series.rows||[]);
     if(byCamp){allCRows=byCamp.rows||[];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
