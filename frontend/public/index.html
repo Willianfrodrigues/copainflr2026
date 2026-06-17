@@ -630,7 +630,7 @@ async function saveAndTestSheets(){
   else toast(res?.error||'Erro ao salvar.','red');
 }
 
-async function loadOrganico(){
+async function loadOrganico(silent=false){
   const data=await loadConfig();
   const urls=data?.sheets_urls||{};
   if(!urls.geral&&data?.sheets_url) urls.geral=data.sheets_url;
@@ -645,7 +645,7 @@ async function loadOrganico(){
     return;
   }
 
-  loading(true,'Importando planilhas...');
+  if(!silent) loading(true,'Importando planilhas...');
   try{
     const results=await Promise.all(ORG_SHEETS.map(s=>fetchCSV(urls[s.id])));
     _orgData={};
@@ -653,9 +653,13 @@ async function loadOrganico(){
     renderOrgCards();
     renderOrgPodium();
     renderOrgSubTabs();
-    // Abre vista unificada por padrão
     showOrgSheet('all');
-  }finally{loading(false);}
+    // Re-renderiza KPIs para incluir soma orgânica
+    if(silent && $('kpi-grid').innerHTML) {
+      const kpiCards = $('kpi-grid').querySelectorAll('.kpi-card');
+      if(kpiCards.length) renderKPIs(window._lastKpi||{});
+    }
+  }finally{if(!silent) loading(false);}
 }
 
 function fmtOrgNum(v){
@@ -970,10 +974,12 @@ function startApp(){
     $('topbar-dates').style.display='flex';
     $('ds').value=mStart();
     $('de').value=today();
-    // Busca config do backend e renderiza
+    // 1. Busca config do backend
     loadConfig().then(()=>{
       renderCampHeader();
+      // 2. Carrega dados paid e orgânico em paralelo
       loadData();
+      loadOrganico(true); // silent=true, sem spinner
     }).catch(()=>{
       renderCampHeader();
       loadData();
@@ -1023,7 +1029,7 @@ async function loadData(){
       apiFetch(`/api/data?${p}&type=by_campaign`),
       apiFetch(`/api/data?${p}&type=by_influencer`),
     ]);
-    if(kpi)renderKPIs(kpi);
+    if(kpi){window._lastKpi=kpi;renderKPIs(kpi);}
     if(series)renderCharts(series.rows||[]);
     if(byCamp){allCRows=byCamp.rows||[];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
     if(byInfl){allInflRows=byInfl.rows||[];populateInflCampFilter();}
