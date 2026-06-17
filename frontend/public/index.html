@@ -590,29 +590,35 @@ async function loadPaidExtra(url){
     const rows=await fetchCSV(url);
     if(!rows||rows.length<2){_paidExtraRows=[];return;}
     const h=rows[0];
-    // Detecta colunas: Plataforma, Influenciador, Impressões, Views, VTR, Cliques, CTR
-    const iPlat  = h.findIndex(x=>/plat/i.test(x));
-    const iInfl  = h.findIndex(x=>/influenc/i.test(x));
-    const iImp   = h.findIndex(x=>/impress/i.test(x));
-    const iView  = h.findIndex(x=>/view/i.test(x));
-    const iVtr   = h.findIndex(x=>/vtr/i.test(x));
-    const iClk   = h.findIndex(x=>/clique|click/i.test(x));
-    const iCtr   = h.findIndex(x=>/ctr/i.test(x));
-    _paidExtraRows = rows.slice(1).filter(r=>r.some(c=>c)).map(r=>({
-      influenciador: (r[iInfl>=0?iInfl:1]||'').trim(),
-      platform:      (r[iPlat>=0?iPlat:0]||'').trim(),
-      impressions:   parseOrgNum(r[iImp>=0?iImp:2]||''),
-      views100:      parseOrgNum(r[iView>=0?iView:3]||''),
-      vtr:           parseFloat((r[iVtr>=0?iVtr:4]||'0').replace('%','').replace(',','.'))||0,
-      clicks:        parseOrgNum(r[iClk>=0?iClk:5]||''),
-      clicks_link:   parseOrgNum(r[iClk>=0?iClk:5]||''),
-      ctr_link:      parseFloat((r[iCtr>=0?iCtr:6]||'0').replace('%','').replace(',','.'))||0,
-      ctr_click:     parseFloat((r[iCtr>=0?iCtr:6]||'0').replace('%','').replace(',','.'))||0,
-      thruplay:      0,
-      comments:0, reactions:0, saves:0, shares:0,
-      CAMPAIGN_NAME: 'Planilha Extra',
-      _fromExtra:    true
-    })).filter(r=>r.influenciador && !/total/i.test(r.influenciador));
+    const iPlat = h.findIndex(x=>/plat/i.test(x));
+    const iInfl = h.findIndex(x=>/influenc/i.test(x));
+    const iImp  = h.findIndex(x=>/impress/i.test(x));
+    const iView = h.findIndex(x=>/view/i.test(x));  // Views → ThruPlay
+    const iClk  = h.findIndex(x=>/clique|click/i.test(x)); // Cliques → clicks_link
+    const iVtr  = h.findIndex(x=>/vtr/i.test(x));
+    const iCtr  = h.findIndex(x=>/ctr/i.test(x));
+    _paidExtraRows = rows.slice(1).filter(r=>r.some(c=>c)).map(r=>{
+      const imp  = parseOrgNum(r[iImp>=0?iImp:2]||'');
+      const clk  = parseOrgNum(r[iClk>=0?iClk:5]||'');   // → clicks_link
+      const view = parseOrgNum(r[iView>=0?iView:3]||'');  // → thruplay
+      const vtr  = parseFloat((r[iVtr>=0?iVtr:4]||'0').replace('%','').replace(',','.'))||0;
+      const ctr  = parseFloat((r[iCtr>=0?iCtr:6]||'0').replace('%','').replace(',','.'))||0;
+      return {
+        influenciador: (r[iInfl>=0?iInfl:1]||'').trim(),
+        platform:      (r[iPlat>=0?iPlat:0]||'').trim(),
+        impressions:   imp,
+        clicks_link:   clk,   // cliques → clicks_link (PG View)
+        clicks:        0,
+        thruplay:      view,  // views → thruplay
+        views100:      0,
+        vtr:           vtr,
+        ctr_link:      ctr,
+        ctr_click:     0,
+        comments:0, reactions:0, saves:0, shares:0,
+        CAMPAIGN_NAME: 'Planilha Extra',
+        _fromExtra:    true
+      };
+    }).filter(r=>r.influenciador && !/total/i.test(r.influenciador));
     console.log(`Loaded ${_paidExtraRows.length} paid extra rows`);
   }catch(e){
     console.warn('loadPaidExtra error:',e);
@@ -1062,9 +1068,29 @@ async function loadData(){
     const orgPromise = (!Object.keys(_orgData).length) ? loadOrganico(true) : Promise.resolve();
     // Aguarda orgânico antes de renderizar KPIs para ter a soma correta
     await orgPromise;
-    if(kpi){window._lastKpi=kpi;renderKPIs(kpi);}
+    // Sum extra paid sheet into KPI
+    const extraImp  = _paidExtraRows.reduce((s,r)=>s+(r.impressions||0),0);
+    const extraClkL = _paidExtraRows.reduce((s,r)=>s+(r.clicks_link||0),0);
+    const extraTP   = _paidExtraRows.reduce((s,r)=>s+(r.thruplay||0),0);
+    if(kpi){
+      const kpiMerged = {...kpi,
+        impressions: (kpi.impressions||0) + extraImp,
+        clicks_link: (kpi.clicks_link||0) + extraClkL,
+        thruplay:    (kpi.thruplay||0)    + extraTP,
+      };
+      window._lastKpi=kpiMerged;
+      renderKPIs(kpiMerged);
+    }
     if(series)renderCharts(series.rows||[]);
-    if(byCamp){allCRows=byCamp.rows||[];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
+    // Add extra rows to campaign table
+    const extraCampRow = extraImp>0 ? [{
+      platform:'Planilha Extra', CAMPAIGN_NAME:'Dados Adicionais',
+      impressions:extraImp, clicks:0, clicks_link:extraClkL,
+      thruplay:extraTP, views100:0,
+      ctr: extraImp>0?(extraClkL/extraImp*100):0,
+      vtr: extraImp>0?(extraTP/extraImp*100):0,
+    }] : [];
+    if(byCamp){allCRows=[...(byCamp.rows||[]),...extraCampRow];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
     if(byInfl){
       allInflRows=byInfl.rows||[];
       // Merge extra paid sheet rows with BQ influencer data
