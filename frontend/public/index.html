@@ -490,6 +490,7 @@ tbody td{padding:11px 15px;font-size:13px;}
 
   </div>
 
+</div>
 <script>
 const API='';
 let USER=null,TOKEN=null,allCRows=[],allInflRows=[],CH={};
@@ -578,10 +579,46 @@ const ORG_SHEETS = [
   {id:'florida', label:'Florida Rental Car', icon:'🚗', color:'#1EC99B'},
   {id:'bra',     label:'BRA.BET',            icon:'🎰', color:'#EC4899'},
   {id:'rr',      label:'Rede Ronaldo',       icon:'⚽', color:'#3B82F6'},
-  {id:'extra',   label:'Dados Adicionais',   icon:'📊', color:'#8B5CF6'},
 ];
-let _orgData   = {};
-let _orgActive = null;
+let _orgData       = {};
+let _orgActive     = null;
+let _paidExtraRows = []; // dados da planilha extra para somar com BQ
+
+async function loadPaidExtra(url){
+  if(!url||!url.trim()){_paidExtraRows=[];return;}
+  try{
+    const rows=await fetchCSV(url);
+    if(!rows||rows.length<2){_paidExtraRows=[];return;}
+    const h=rows[0];
+    // Detecta colunas: Plataforma, Influenciador, Impressões, Views, VTR, Cliques, CTR
+    const iPlat  = h.findIndex(x=>/plat/i.test(x));
+    const iInfl  = h.findIndex(x=>/influenc/i.test(x));
+    const iImp   = h.findIndex(x=>/impress/i.test(x));
+    const iView  = h.findIndex(x=>/view/i.test(x));
+    const iVtr   = h.findIndex(x=>/vtr/i.test(x));
+    const iClk   = h.findIndex(x=>/clique|click/i.test(x));
+    const iCtr   = h.findIndex(x=>/ctr/i.test(x));
+    _paidExtraRows = rows.slice(1).filter(r=>r.some(c=>c)).map(r=>({
+      influenciador: (r[iInfl>=0?iInfl:1]||'').trim(),
+      platform:      (r[iPlat>=0?iPlat:0]||'').trim(),
+      impressions:   parseOrgNum(r[iImp>=0?iImp:2]||''),
+      views100:      parseOrgNum(r[iView>=0?iView:3]||''),
+      vtr:           parseFloat((r[iVtr>=0?iVtr:4]||'0').replace('%','').replace(',','.'))||0,
+      clicks:        parseOrgNum(r[iClk>=0?iClk:5]||''),
+      clicks_link:   parseOrgNum(r[iClk>=0?iClk:5]||''),
+      ctr_link:      parseFloat((r[iCtr>=0?iCtr:6]||'0').replace('%','').replace(',','.'))||0,
+      ctr_click:     parseFloat((r[iCtr>=0?iCtr:6]||'0').replace('%','').replace(',','.'))||0,
+      thruplay:      0,
+      comments:0, reactions:0, saves:0, shares:0,
+      CAMPAIGN_NAME: 'Planilha Extra',
+      _fromExtra:    true
+    })).filter(r=>r.influenciador && !/total/i.test(r.influenciador));
+    console.log(`Loaded ${_paidExtraRows.length} paid extra rows`);
+  }catch(e){
+    console.warn('loadPaidExtra error:',e);
+    _paidExtraRows=[];
+  }
+}
 
 function parseCSVLine(line){
   const result=[];let cur='';let inQ=false;
@@ -625,7 +662,9 @@ async function saveAndTestSheets(){
 async function loadOrganico(silent=false){
   const data=await loadConfig();
   const urls=data?.sheets_urls||{};
-  if(!urls.geral&&data?.sheets_url) urls.geral=data.sheets_url;
+
+  // Load extra paid sheet separately (not organic)
+  if(urls.extra) await loadPaidExtra(urls.extra);
 
   const hasAny=ORG_SHEETS.some(s=>urls[s.id]);
   if(!hasAny){
@@ -1026,7 +1065,31 @@ async function loadData(){
     if(kpi){window._lastKpi=kpi;renderKPIs(kpi);}
     if(series)renderCharts(series.rows||[]);
     if(byCamp){allCRows=byCamp.rows||[];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
-    if(byInfl){allInflRows=byInfl.rows||[];populateInflCampFilter();}
+    if(byInfl){
+      allInflRows=byInfl.rows||[];
+      // Merge extra paid sheet rows with BQ influencer data
+      if(_paidExtraRows.length){
+        // Aggregate by influenciador+platform
+        const merged={};
+        [...allInflRows,..._paidExtraRows].forEach(r=>{
+          const key=(r.influenciador||'')+'||'+(r.platform||'');
+          if(!merged[key]){merged[key]={...r};}
+          else{
+            merged[key].impressions =(merged[key].impressions||0)+(r.impressions||0);
+            merged[key].clicks_link =(merged[key].clicks_link||0)+(r.clicks_link||0);
+            merged[key].clicks      =(merged[key].clicks||0)+(r.clicks||0);
+            merged[key].thruplay    =(merged[key].thruplay||0)+(r.thruplay||0);
+            merged[key].views100    =(merged[key].views100||0)+(r.views100||0);
+            const totImp=merged[key].impressions||1;
+            merged[key].ctr_link  =((merged[key].clicks_link||0)/totImp)*100;
+            merged[key].ctr_click =((merged[key].clicks||0)/totImp)*100;
+            merged[key].vtr       =((merged[key].thruplay||0)/totImp)*100;
+          }
+        });
+        allInflRows=Object.values(merged);
+      }
+      populateInflCampFilter();
+    }
   }catch(e){console.error(e);toast('Erro ao buscar dados: '+e.message,'red');}
   finally{loading(false);if($('upd-btn'))$('upd-btn').disabled=false;}
 }
