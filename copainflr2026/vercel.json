@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "api/login.py",  "use": "@vercel/python" },
+    { "src": "api/data.py",   "use": "@vercel/python" },
+    { "src": "api/users.py",  "use": "@vercel/python" },
+    { "src": "api/config.py", "use": "@vercel/python" },
+    { "src": "frontend/public/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/login",  "dest": "/api/login.py" },
+    { "src": "/api/data",   "dest": "/api/data.py" },
+    { "src": "/api/users",  "dest": "/api/users.py" },
+    { "src": "/api/config", "dest": "/api/config.py" },
+    { "src": "/", "dest": "/frontend/public/index.html" },
+    { "src": "/(.*)", "dest": "/frontend/public/$1" }
+  ]
+}
