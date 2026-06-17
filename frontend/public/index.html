@@ -992,8 +992,14 @@ function startApp(){
     $('topbar-dates').style.display='flex';
     $('ds').value=mStart();
     $('de').value=today();
-    renderCampHeader();
-    loadData();
+    // Busca config do backend e renderiza
+    loadConfig().then(()=>{
+      renderCampHeader();
+      loadData();
+    }).catch(()=>{
+      renderCampHeader();
+      loadData();
+    });
   }
 }
 
