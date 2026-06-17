@@ -357,7 +357,6 @@ tbody td{padding:11px 15px;font-size:13px;}
           <div class="cfg-field"><label>🚗 Aba: Florida Rental Car</label><input id="sheets-url-florida" placeholder="...pub?gid=XXXX&output=csv"></div>
           <div class="cfg-field"><label>🎰 Aba: BRA.BET</label><input id="sheets-url-bra" placeholder="...pub?gid=XXXX&output=csv"></div>
           <div class="cfg-field"><label>⚽ Aba: Rede Ronaldo (RR)</label><input id="sheets-url-rr" placeholder="...pub?gid=XXXX&output=csv"></div>
-          <div class="cfg-field"><label>📊 Aba: Dados Adicionais (Paid Extra)</label><input id="sheets-url-extra" placeholder="...pub?gid=XXXX&output=csv"></div>
         </div>
         <button class="btn-gold" onclick="saveAndTestSheets()">💾 Salvar URLs</button>
         <div class="organico-note" style="margin-top:8px;">⚠️ Deixe em branco as abas que ainda não estão prontas.</div>
@@ -563,7 +562,6 @@ async function loadCampConfigToForm(){
   if($('sheets-url-florida'))$('sheets-url-florida').value= su.florida||'';
   if($('sheets-url-bra'))    $('sheets-url-bra').value    = su.bra||'';
   if($('sheets-url-rr'))     $('sheets-url-rr').value     = su.rr||'';
-  if($('sheets-url-extra'))  $('sheets-url-extra').value  = su.extra||'';
 
   // Avisa admin se a config ainda não foi salva no servidor
   const savedOnServer = cfg.some(c=>c.kw && c.kw.trim());
@@ -582,49 +580,6 @@ const ORG_SHEETS = [
 ];
 let _orgData       = {};
 let _orgActive     = null;
-let _paidExtraRows = []; // dados da planilha extra para somar com BQ
-
-async function loadPaidExtra(url){
-  if(!url||!url.trim()){_paidExtraRows=[];return;}
-  try{
-    const rows=await fetchCSV(url);
-    if(!rows||rows.length<2){_paidExtraRows=[];return;}
-    const h=rows[0];
-    const iPlat = h.findIndex(x=>/plat/i.test(x));
-    const iInfl = h.findIndex(x=>/influenc/i.test(x));
-    const iImp  = h.findIndex(x=>/impress/i.test(x));
-    const iView = h.findIndex(x=>/view/i.test(x));  // Views → ThruPlay
-    const iClk  = h.findIndex(x=>/clique|click/i.test(x)); // Cliques → clicks_link
-    const iVtr  = h.findIndex(x=>/vtr/i.test(x));
-    const iCtr  = h.findIndex(x=>/ctr/i.test(x));
-    _paidExtraRows = rows.slice(1).filter(r=>r.some(c=>c)).map(r=>{
-      const imp  = parseOrgNum(r[iImp>=0?iImp:2]||'');
-      const clk  = parseOrgNum(r[iClk>=0?iClk:5]||'');   // → clicks_link
-      const view = parseOrgNum(r[iView>=0?iView:3]||'');  // → thruplay
-      const vtr  = parseFloat((r[iVtr>=0?iVtr:4]||'0').replace('%','').replace(',','.'))||0;
-      const ctr  = parseFloat((r[iCtr>=0?iCtr:6]||'0').replace('%','').replace(',','.'))||0;
-      return {
-        influenciador: (r[iInfl>=0?iInfl:1]||'').trim(),
-        platform:      (r[iPlat>=0?iPlat:0]||'').trim(),
-        impressions:   imp,
-        clicks_link:   clk,   // cliques → clicks_link (PG View)
-        clicks:        0,
-        thruplay:      view,  // views → thruplay
-        views100:      0,
-        vtr:           vtr,
-        ctr_link:      ctr,
-        ctr_click:     0,
-        comments:0, reactions:0, saves:0, shares:0,
-        CAMPAIGN_NAME: 'Planilha Extra',
-        _fromExtra:    true
-      };
-    }).filter(r=>r.influenciador && !/total/i.test(r.influenciador));
-    console.log(`Loaded ${_paidExtraRows.length} paid extra rows`);
-  }catch(e){
-    console.warn('loadPaidExtra error:',e);
-    _paidExtraRows=[];
-  }
-}
 
 function parseCSVLine(line){
   const result=[];let cur='';let inQ=false;
@@ -658,7 +613,6 @@ async function saveAndTestSheets(){
     florida: $('sheets-url-florida')?.value.trim()||'',
     bra:     $('sheets-url-bra')?.value.trim()||'',
     rr:      $('sheets-url-rr')?.value.trim()||'',
-    extra:   $('sheets-url-extra')?.value.trim()||'',
   };
   const res=await apiFetch('/api/config',{method:'POST',body:JSON.stringify({camps:cfg,sheets_url:sheets_urls.geral,sheets_urls})});
   if(res&&res.ok){_campConfigCache=cfg;toast('URLs salvas!');}
@@ -1060,55 +1014,11 @@ async function loadData(){
     const urls = cfgData?.sheets_urls||{};
     // 2. Carrega orgânico se necessário
     if(!Object.keys(_orgData).length) await loadOrganico(true);
-    // 3. Carrega extra SEMPRE
-    if(urls.extra) await loadPaidExtra(urls.extra);
-    else _paidExtraRows=[];
-    // Sum extra paid sheet into KPI
-    const extraImp  = _paidExtraRows.reduce((s,r)=>s+(r.impressions||0),0);
-    const extraClkL = _paidExtraRows.reduce((s,r)=>s+(r.clicks_link||0),0);
-    const extraTP   = _paidExtraRows.reduce((s,r)=>s+(r.thruplay||0),0);
-    if(kpi){
-      const kpiMerged = {...kpi,
-        impressions: (kpi.impressions||0) + extraImp,
-        clicks_link: (kpi.clicks_link||0) + extraClkL,
-        thruplay:    (kpi.thruplay||0)    + extraTP,
-      };
-      window._lastKpi=kpiMerged;
-      renderKPIs(kpiMerged);
-    }
+    if(kpi){window._lastKpi=kpi;renderKPIs(kpi);}
     if(series)renderCharts(series.rows||[]);
-    // Add extra rows to campaign table
-    const extraCampRow = extraImp>0 ? [{
-      platform:'Planilha Extra', CAMPAIGN_NAME:'Dados Adicionais',
-      impressions:extraImp, clicks:0, clicks_link:extraClkL,
-      thruplay:extraTP, views100:0,
-      ctr: extraImp>0?(extraClkL/extraImp*100):0,
-      vtr: extraImp>0?(extraTP/extraImp*100):0,
-    }] : [];
-    if(byCamp){allCRows=[...(byCamp.rows||[]),...extraCampRow];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
+    if(byCamp){allCRows=byCamp.rows||[];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
     if(byInfl){
       allInflRows=byInfl.rows||[];
-      // Merge extra paid sheet rows with BQ influencer data
-      if(_paidExtraRows.length){
-        // Aggregate by influenciador+platform
-        const merged={};
-        [...allInflRows,..._paidExtraRows].forEach(r=>{
-          const key=(r.influenciador||'')+'||'+(r.platform||'');
-          if(!merged[key]){merged[key]={...r};}
-          else{
-            merged[key].impressions =(merged[key].impressions||0)+(r.impressions||0);
-            merged[key].clicks_link =(merged[key].clicks_link||0)+(r.clicks_link||0);
-            merged[key].clicks      =(merged[key].clicks||0)+(r.clicks||0);
-            merged[key].thruplay    =(merged[key].thruplay||0)+(r.thruplay||0);
-            merged[key].views100    =(merged[key].views100||0)+(r.views100||0);
-            const totImp=merged[key].impressions||1;
-            merged[key].ctr_link  =((merged[key].clicks_link||0)/totImp)*100;
-            merged[key].ctr_click =((merged[key].clicks||0)/totImp)*100;
-            merged[key].vtr       =((merged[key].thruplay||0)/totImp)*100;
-          }
-        });
-        allInflRows=Object.values(merged);
-      }
       populateInflCampFilter();
     }
   }catch(e){console.error(e);toast('Erro ao buscar dados: '+e.message,'red');}
