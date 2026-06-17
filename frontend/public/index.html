@@ -1130,20 +1130,18 @@ function renderComparativo(rows,kpi){
 }
 // INFLUENCIADORES
 const INFL_COLS = [
-  {key:'influenciador', label:'Influenciador',    fmt:r=>r.influenciador||'—',           sortable:true},
-  {key:'platform',      label:'Plataforma',       fmt:r=>{
+  {key:'influenciador', label:'Influenciador', fmt:r=>r.influenciador||'—', sortable:true},
+  {key:'platform',      label:'Plataforma',    fmt:r=>{
     const p=(r.platform||'').toLowerCase();
     const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':'other';
     const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':r.platform||'—';
     return `<span class="plt plt-${pc}">${pl}</span>`;
   }, sortable:true},
-  {key:'impressions',   label:'Impressões',       fmt:(r,mx)=>`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((r.impressions||0)/mx.imp*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(r.impressions)}</span></div>`, sortable:true},
-  {key:'clicks_link',   label:'PG View',          fmt:r=>`<span style="font-weight:700;color:#1EC99B;">${fmt(r.clicks_link)}</span>`, sortable:true},
-  {key:'clicks',        label:'Clicks Link',      fmt:r=>fmt(r.clicks), sortable:true},
-  {key:'ctr_link',      label:'CTR PG View',      fmt:r=>`<span style="font-weight:700;color:#EC4899;">${fmtP(r.ctr_link)}</span>`, sortable:true},
-  {key:'ctr_click',     label:'CTR Clique',       fmt:r=>`<span style="color:#3B82F6;">${fmtP(r.ctr_click)}</span>`, sortable:true},
-  {key:'thruplay',      label:'ThruPlay',         fmt:r=>fmt(r.thruplay), sortable:true},
-  {key:'vtr',           label:'VTR',              fmt:(r,mx)=>{
+  {key:'impressions',   label:'Impressões',    fmt:(r,mx)=>`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((r.impressions||0)/mx.imp*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(r.impressions)}</span></div>`, sortable:true},
+  {key:'_click',        label:'Cliques',       fmt:r=>`<span style="font-weight:700;color:#1EC99B;">${fmt(r[getCampConfig().find(c=>c.kw)?.click||'clicks_link'])}</span>`, sortable:false},
+  {key:'_ctr',          label:'CTR',           fmt:r=>`<span style="font-weight:700;color:#EC4899;">${fmtP(r[(getCampConfig().find(c=>c.kw)?.click||'clicks_link')==='clicks_link'?'ctr_link':'ctr_click'])}</span>`, sortable:false},
+  {key:'thruplay',      label:'ThruPlay',      fmt:r=>fmt(r.thruplay), sortable:true},
+  {key:'vtr',           label:'VTR',           fmt:(r,mx)=>{
     const vtrColor=(r.vtr||0)>=15?'#1EC99B':(r.vtr||0)>=8?'#F5C842':'#F05A5A';
     const pct=Math.min(((r.vtr||0)/(mx.vtr||1)*100),100).toFixed(1);
     return `<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:${vtrColor};"></div></div><span class="bar-v" style="color:${vtrColor};font-weight:700;">${fmtP(r.vtr)}</span></div>`;
@@ -1255,10 +1253,12 @@ function renderInflTable(){
   const totV100=rows.reduce((s,r)=>s+(r.views100||0),0);
   const avgVtr=rows.length?rows.reduce((s,r)=>s+(r.vtr||0),0)/rows.length:0;
   const uniqueInfl=new Set(rows.map(r=>r.influenciador)).size;
+  const clickKey = getCampConfig().find(c=>c.kw)?.click||'clicks_link';
+  const clickLbl = CLICK_LABELS[clickKey]||'Cliques';
   $('infl-kpi-strip').innerHTML=[
     {l:'Influenciadores',v:uniqueInfl,      ac:'#F5C842'},
     {l:'Impressões',     v:fmt(totImp),     ac:'#1EC99B'},
-    {l:'PG View',        v:fmt(totClkL),    ac:'#EC4899'},
+    {l:clickLbl,         v:fmt(totClkL),    ac:'#EC4899'},
     {l:'ThruPlay',       v:fmt(totTP),      ac:'#F5A623'},
     {l:'VTR Médio',      v:fmtP(avgVtr),    ac:'#8B5CF6'},
   ].map(c=>`<div class="kpi-card" style="--ac:${c.ac};padding:14px 16px;"><div class="kpi-lbl">${c.l}</div><div class="kpi-val" style="font-size:22px;">${c.v}</div></div>`).join('');
