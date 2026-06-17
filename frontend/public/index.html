@@ -1064,10 +1064,17 @@ async function loadData(){
       apiFetch(`/api/data?${p}&type=by_campaign`),
       apiFetch(`/api/data?${p}&type=by_influencer`),
     ]);
-    // Carrega orgânico em paralelo (sem spinner, sem await)
-    const orgPromise = (!Object.keys(_orgData).length) ? loadOrganico(true) : Promise.resolve();
-    // Aguarda orgânico antes de renderizar KPIs para ter a soma correta
-    await orgPromise;
+    // Carrega orgânico e extra em paralelo
+    const needsOrg   = !Object.keys(_orgData).length;
+    const needsExtra = _paidExtraRows.length === 0;
+    const promises = [];
+    if(needsOrg || needsExtra){
+      const data = await loadConfig();
+      const urls = data?.sheets_urls||{};
+      if(needsOrg)   promises.push(loadOrganico(true));
+      if(needsExtra && urls.extra) promises.push(loadPaidExtra(urls.extra));
+    }
+    if(promises.length) await Promise.all(promises);
     // Sum extra paid sheet into KPI
     const extraImp  = _paidExtraRows.reduce((s,r)=>s+(r.impressions||0),0);
     const extraClkL = _paidExtraRows.reduce((s,r)=>s+(r.clicks_link||0),0);
