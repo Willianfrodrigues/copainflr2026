@@ -669,9 +669,6 @@ async function loadOrganico(silent=false){
   const data=await loadConfig();
   const urls=data?.sheets_urls||{};
 
-  // Load extra paid sheet separately (not organic)
-  if(urls.extra) await loadPaidExtra(urls.extra);
-
   const hasAny=ORG_SHEETS.some(s=>urls[s.id]);
   if(!hasAny){
     $('org-cards').innerHTML='';
@@ -1057,24 +1054,20 @@ async function loadData(){
   loading(true);if($('upd-btn'))$('upd-btn').disabled=true;
   try{
     const p=`start_date=${start}&end_date=${end}`;
-    // Carrega BQ e orgânico em paralelo
-    const[kpi,series,byCamp,byInfl]=await Promise.all([
+    // 1. Busca config e dados BQ em paralelo
+    const[cfgData, kpi, series, byCamp, byInfl]=await Promise.all([
+      loadConfig(),
       apiFetch(`/api/data?${p}&type=kpi`),
       apiFetch(`/api/data?${p}&type=timeseries`),
       apiFetch(`/api/data?${p}&type=by_campaign`),
       apiFetch(`/api/data?${p}&type=by_influencer`),
     ]);
-    // Carrega orgânico e extra em paralelo
-    const needsOrg   = !Object.keys(_orgData).length;
-    const needsExtra = _paidExtraRows.length === 0;
-    const promises = [];
-    if(needsOrg || needsExtra){
-      const data = await loadConfig();
-      const urls = data?.sheets_urls||{};
-      if(needsOrg)   promises.push(loadOrganico(true));
-      if(needsExtra && urls.extra) promises.push(loadPaidExtra(urls.extra));
-    }
-    if(promises.length) await Promise.all(promises);
+    const urls = cfgData?.sheets_urls||{};
+    // 2. Carrega orgânico se necessário
+    if(!Object.keys(_orgData).length) await loadOrganico(true);
+    // 3. Carrega extra SEMPRE (sequencial para garantir dados frescos)
+    if(urls.extra) await loadPaidExtra(urls.extra);
+    else _paidExtraRows=[];
     // Sum extra paid sheet into KPI
     const extraImp  = _paidExtraRows.reduce((s,r)=>s+(r.impressions||0),0);
     const extraClkL = _paidExtraRows.reduce((s,r)=>s+(r.clicks_link||0),0);
