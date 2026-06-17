@@ -397,8 +397,7 @@ tbody td{padding:11px 15px;font-size:13px;}
         <div class="charts-grid">
           <div class="chart-card"><div class="ch-header"><div class="ch-title">Impressões</div><span class="ch-badge" id="b-imp">—</span></div><div class="ch-wrap"><canvas id="c-imp"></canvas></div></div>
           <div class="chart-card"><div class="ch-header"><div class="ch-title">Cliques</div><span class="ch-badge" id="b-clk">—</span></div><div class="ch-wrap"><canvas id="c-clk"></canvas></div></div>
-          <div class="chart-card"><div class="ch-header"><div class="ch-title">CTR</div><span class="ch-badge" id="b-ctr">—</span></div><div class="ch-wrap"><canvas id="c-ctr"></canvas></div></div>
-          <div class="chart-card"><div class="ch-header"><div class="ch-title">VTR</div><span class="ch-badge" id="b-vtr">—</span></div><div class="ch-wrap"><canvas id="c-vtr"></canvas></div></div>
+          <div class="chart-card"><div class="ch-header"><div class="ch-title">ThruPlay</div><span class="ch-badge" id="b-tp">—</span></div><div class="ch-wrap"><canvas id="c-tp"></canvas></div></div>
         </div>
         <div class="sec-lbl" style="margin-top:24px;">Todas as Campanhas</div>
         <div class="tbl-card">
@@ -1074,12 +1073,10 @@ function renderCharts(rows){
   const lbl=rows.map(r=>r.date.slice(5));
   mkChart('c-imp','Impressões',lbl,rows.map(r=>r.impressions||0),'#F5C842');
   mkChart('c-clk','Cliques',lbl,rows.map(r=>r.clicks||0),'#1EC99B');
-  mkChart('c-ctr','CTR (%)',lbl,rows.map(r=>r.ctr||0),'#EC4899');
-  mkChart('c-vtr','VTR (%)',lbl,rows.map(r=>r.vtr||0),'#8B5CF6');
+  mkChart('c-tp','ThruPlay',lbl,rows.map(r=>r.thruplay||0),'#F5A623');
   $('b-imp').textContent=fmt(rows.reduce((a,r)=>a+(r.impressions||0),0));
   $('b-clk').textContent=fmt(rows.reduce((a,r)=>a+(r.clicks||0),0));
-  $('b-ctr').textContent=fmtP(rows.reduce((a,r)=>a+(r.ctr||0),0)/rows.length);
-  $('b-vtr').textContent=fmtP(rows.reduce((a,r)=>a+(r.vtr||0),0)/rows.length);
+  if($('b-tp'))$('b-tp').textContent=fmt(rows.reduce((a,r)=>a+(r.thruplay||0),0));
 }
 
 function renderCampTable(rows){
@@ -1178,11 +1175,6 @@ const INFL_COLS = [
     const pct=Math.min(((r.vtr||0)/(mx.vtr||1)*100),100).toFixed(1);
     return `<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:${vtrColor};"></div></div><span class="bar-v" style="color:${vtrColor};font-weight:700;">${fmtP(r.vtr)}</span></div>`;
   }, sortable:true},
-  {key:'views100',      label:'Views 100%',       fmt:r=>fmt(r.views100), sortable:true},
-  {key:'comments',      label:'💬 Coment.',       fmt:r=>fmt(r.comments), sortable:true},
-  {key:'reactions',     label:'❤️ Reações',       fmt:r=>fmt(r.reactions), sortable:true},
-  {key:'saves',         label:'🔖 Salvamentos',   fmt:r=>fmt(r.saves), sortable:true},
-  {key:'shares',        label:'↗️ Compartilh.',   fmt:r=>fmt(r.shares), sortable:true},
 ];
 
 function populateInflCampFilter(){
