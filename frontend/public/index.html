@@ -393,9 +393,6 @@ tbody td{padding:11px 15px;font-size:13px;}
       <div id="tab-overview">
         <div class="sec-lbl">KPIs Consolidados do Período</div>
         <div class="kpi-grid" id="kpi-grid"></div>
-          <div class="chart-card"><div class="ch-header"><div class="ch-title">Cliques</div><span class="ch-badge" id="b-clk">—</span></div><div class="ch-wrap"><canvas id="c-clk"></canvas></div></div>
-          <div class="chart-card"><div class="ch-header"><div class="ch-title">ThruPlay</div><span class="ch-badge" id="b-tp">—</span></div><div class="ch-wrap"><canvas id="c-tp"></canvas></div></div>
-        </div>
         <div class="sec-lbl" style="margin-top:24px;">Todas as Campanhas</div>
         <div class="tbl-card">
           <div class="tbl-top"><div class="tbl-ttl">Análise por Campanha</div></div>
@@ -1053,27 +1050,13 @@ function renderKPIs(k){
     {l:'CTR',       v:fmtP(k.ctr),       s:'taxa de cliques',  ac:'#EC4899'},
     {l:'ThruPlay',  v:fmt(k.thruplay),   s:'vídeos completos', ac:'#F5A623'},
     {l:'VTR',       v:fmtP(k.vtr),       s:'view through rate',ac:'#8B5CF6'},
-    {l:'Views 100%',v:fmt(k.views100),   s:'assistidos até fim',ac:'#06B6D4'},
   ].map(c=>`<div class="kpi-card" style="--ac:${c.ac}"><div class="kpi-lbl">${c.l}</div><div class="kpi-val ${c.v==='—'?'nd':''}">${c.v}</div><div class="kpi-sub">${c.s}</div></div>`).join('');
 
   $('kpi-grid').innerHTML = impCard + otherCards;
 }
 
+function renderCharts(rows){ /* gráficos removidos */ }
 function destroyCharts(){Object.values(CH).forEach(c=>c&&c.destroy());CH={};}
-function mkChart(id,lbl,labels,data,color){
-  const ctx=$(id);if(!ctx)return;if(CH[id])CH[id].destroy();
-  CH[id]=new Chart(ctx,{type:'line',data:{labels,datasets:[{label:lbl,data,borderColor:color,backgroundColor:color+'22',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:color,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'rgba(255,255,255,.35)',font:{size:10},maxTicksLimit:8}},y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'rgba(255,255,255,.35)',font:{size:10}}}}}});
-}
-function renderCharts(rows){
-  destroyCharts();if(!rows.length)return;
-  const lbl=rows.map(r=>r.date.slice(5));
-  mkChart('c-imp','Impressões',lbl,rows.map(r=>r.impressions||0),'#F5C842');
-  mkChart('c-clk','Cliques',lbl,rows.map(r=>r.clicks||0),'#1EC99B');
-  mkChart('c-tp','ThruPlay',lbl,rows.map(r=>r.thruplay||0),'#F5A623');
-  $('b-imp').textContent=fmt(rows.reduce((a,r)=>a+(r.impressions||0),0));
-  $('b-clk').textContent=fmt(rows.reduce((a,r)=>a+(r.clicks||0),0));
-  if($('b-tp'))$('b-tp').textContent=fmt(rows.reduce((a,r)=>a+(r.thruplay||0),0));
-}
 
 function renderCampTable(rows){
   if(!rows.length){$('c-tbody').innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ico">📋</div><h3>Nenhuma campanha no período</h3></div></td></tr>`;return;}
