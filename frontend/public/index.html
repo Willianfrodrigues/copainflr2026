@@ -688,11 +688,6 @@ async function loadOrganico(silent=false){
     renderOrgPodium();
     renderOrgSubTabs();
     showOrgSheet('all');
-    // Re-renderiza KPIs para incluir soma orgânica
-    if(silent && $('kpi-grid').innerHTML) {
-      const kpiCards = $('kpi-grid').querySelectorAll('.kpi-card');
-      if(kpiCards.length) renderKPIs(window._lastKpi||{});
-    }
   }finally{if(!silent) loading(false);}
 }
 
@@ -1056,7 +1051,7 @@ async function loadData(){
     const p=`start_date=${start}&end_date=${end}`;
     // 1. Busca config e dados BQ em paralelo
     const[cfgData, kpi, series, byCamp, byInfl]=await Promise.all([
-      loadConfig(),
+      apiFetch('/api/config'),
       apiFetch(`/api/data?${p}&type=kpi`),
       apiFetch(`/api/data?${p}&type=timeseries`),
       apiFetch(`/api/data?${p}&type=by_campaign`),
@@ -1065,7 +1060,7 @@ async function loadData(){
     const urls = cfgData?.sheets_urls||{};
     // 2. Carrega orgânico se necessário
     if(!Object.keys(_orgData).length) await loadOrganico(true);
-    // 3. Carrega extra SEMPRE (sequencial para garantir dados frescos)
+    // 3. Carrega extra SEMPRE
     if(urls.extra) await loadPaidExtra(urls.extra);
     else _paidExtraRows=[];
     // Sum extra paid sheet into KPI
