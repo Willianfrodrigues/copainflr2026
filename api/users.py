@@ -29,8 +29,8 @@ class handler(BaseHTTPRequestHandler):
         try:
             _require_admin(self.headers)
             conn = get_db(); cur = conn.cursor()
-            cur.execute("SELECT username, role, client, campaigns FROM users ORDER BY id")
-            rows = [{"username":r[0],"role":r[1],"client":r[2],"campaigns":list(r[3] or [])} for r in cur.fetchall()]
+            cur.execute("SELECT username, role, client, campaigns, exclude FROM users ORDER BY id")
+            rows = [{"username":r[0],"role":r[1],"client":r[2],"campaigns":list(r[3] or []),"exclude":list(r[4] or [])} for r in cur.fetchall()]
             cur.close(); conn.close()
             self._send(json_response(rows))
         except (PermissionError, jwt.ExpiredSignatureError) as e:
@@ -46,21 +46,40 @@ class handler(BaseHTTPRequestHandler):
 
             conn = get_db(); cur = conn.cursor()
             cur.execute("""
-                INSERT INTO users (username, password, role, client, campaigns)
-                VALUES (%s, %s, 'client', %s, %s)
+                INSERT INTO users (username, password, role, client, campaigns, exclude)
+                VALUES (%s, %s, 'client', %s, %s, %s)
                 ON CONFLICT (username) DO NOTHING
                 RETURNING id
             """, (
                 body["username"],
                 _hash(body["password"]),
                 body.get("client", ""),
-                body.get("campaigns", [])
+                body.get("campaigns", []),
+                body.get("exclude", [])
             ))
             inserted = cur.fetchone()
             conn.commit(); cur.close(); conn.close()
 
             if not inserted:
                 return self._send(error_response("Usuário já existe.", 400))
+            self._send(json_response({"ok": True}))
+        except (PermissionError, jwt.ExpiredSignatureError) as e:
+            self._send(error_response(str(e), 401))
+        except Exception as e:
+            self._send(error_response(str(e), 500))
+
+    def do_PUT(self):
+        try:
+            _require_admin(self.headers)
+            length = int(self.headers.get("Content-Length", 0))
+            body   = json.loads(self.rfile.read(length))
+            username = body.get("username")
+            campaigns = body.get("campaigns", [])
+            exclude   = body.get("exclude", [])
+            conn = get_db(); cur = conn.cursor()
+            cur.execute("UPDATE users SET campaigns=%s, exclude=%s WHERE username=%s",
+                        (campaigns, exclude, username))
+            conn.commit(); cur.close(); conn.close()
             self._send(json_response({"ok": True}))
         except (PermissionError, jwt.ExpiredSignatureError) as e:
             self._send(error_response(str(e), 401))
