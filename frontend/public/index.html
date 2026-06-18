@@ -1022,7 +1022,7 @@ function showOrgSheet(id){
   }
 
   // Formato antigo — mostra primeiras 4 colunas, para em 3 linhas vazias consecutivas
-  const headers=h.slice(0,4);
+  const headers=h.slice(0,5);
   let emptyCount=0;
   const data=rows.slice(1).filter(r=>{
     if(!r.some(c=>c)){emptyCount++;return false;}
@@ -1036,7 +1036,7 @@ function showOrgSheet(id){
   const maxImp=Math.max(...data.map(r=>parseOrgNum(r[idxImp]||'')),1);
   $('org-head').innerHTML=`<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
   $('org-body').innerHTML=data.map(r=>{
-    const row4=r.slice(0,4);
+    const row4=r.slice(0,5);
     const isTotal=/total/i.test(row4[0]||'');
     const style=isTotal?'background:var(--bg2);font-weight:700;border-top:2px solid var(--border);':'';
     const cells=headers.map((_,i)=>{
