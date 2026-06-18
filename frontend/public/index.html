@@ -373,8 +373,8 @@ tbody td{padding:11px 15px;font-size:13px;}
           <div class="af"><label>Usuário</label><input id="nu" placeholder="ex: interno01"></div>
           <div class="af"><label>Senha</label><input type="password" id="np" placeholder="senha segura"></div>
           <div class="af"><label>Nome</label><input id="nc" placeholder="ex: Time Copa"></div>
-          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET, COPA"><div class="hint">Separe por vírgula. Vazio = vê todas.</div></div>
-          <div class="af"><label>Excluir (palavras-chave)</label><input id="nexclude" placeholder="ex: INFLR, AWARENESS"><div class="hint">Oculta campanhas com estas palavras.</div></div>
+          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET"><div class="hint">Vazio = vê todas.</div></div>
+          <div class="af"><label>Excluir (palavras-chave)</label><input id="nexclude" placeholder="ex: INFLR"><div class="hint">Oculta campanhas com estas palavras.</div></div>
           <button class="btn-g" onclick="adminAdd()" style="height:38px;">+ Adicionar</button>
         </div>
         <table><thead><tr><th>Usuário</th><th>Nome</th><th>Acesso</th><th>Excluir</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
@@ -1113,7 +1113,9 @@ function userExcludesCamp(campName){
 
 function renderCampHeader(){
   const cfg=getCampConfig();
-  const active=cfg.filter(c=>c.kw);
+  const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  const _ok=kw=>{if(!_uKws.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
+  const active=cfg.filter(c=>c.kw&&_ok(c.kw)&&!userExcludesCamp(c.kw));
   const el=$('camp-header');
   if(!active.length){
     el.setAttribute('style','display:block');
@@ -1122,7 +1124,7 @@ function renderCampHeader(){
   }
   el.setAttribute('style',`display:grid;grid-template-columns:repeat(${active.length},1fr);gap:14px;margin-bottom:24px;`);
   el.innerHTML=cfg.map((c,i)=>{
-    if(!c.kw) return '';
+    if(!c.kw||!_ok(c.kw)||userExcludesCamp(c.kw)) return '';
     return `<div class="camp-slot" style="--slot-color:${CAMP_COLORS[i]}">
       <div class="camp-slot-num">Campanha ${i+1}</div>
       <div class="camp-slot-name">${c.nome||'—'}</div>
@@ -1203,8 +1205,10 @@ function renderCampTable(rows){
 function renderComparativo(rows,kpi){
   const cfg=getCampConfig();
   // Agrupa por campanha configurada
+  const _uKwsC=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  const _okC=kw=>{if(!_uKwsC.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKwsC.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
   const cards=cfg.map((c,i)=>{
-    if(!c.kw)return null; // pula não configuradas
+    if(!c.kw||!_okC(c.kw))return null;
     const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));
     const imp=campRows.reduce((a,r)=>a+(r.impressions||0),0);
     const clk=campRows.reduce((a,r)=>a+(r[c.click]||0),0);
@@ -1458,9 +1462,10 @@ async function loadAdminUsers(){
   renderAccessSheetsList();
 }
 async function adminAdd(){
-  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim(),exRaw=($('nexclude')?.value||'').trim();
+  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim();
   if(!username||!password)return toast('Preencha usuário e senha.','red');
   const campaigns=kRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const exRaw=($('nexclude')?.value||'').trim();
   const exclude=exRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
   const res=await apiFetch('/api/users',{method:'POST',body:JSON.stringify({username,password,client,campaigns,exclude})});
   if(res?.ok){['nu','np','nc','nk','nexclude'].forEach(id=>{if($(id))$(id).value='';});toast('Usuário criado!');loadAdminUsers();}
