@@ -1052,11 +1052,12 @@ function renderCharts(rows){ /* gráficos removidos */ }
 function destroyCharts(){Object.values(CH).forEach(c=>c&&c.destroy());CH={};}
 
 function renderCampTable(rows){
-  if(!rows.length){$('c-tbody').innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ico">📋</div><h3>Nenhuma campanha no período</h3></div></td></tr>`;return;}
-  const mI=Math.max(...rows.map(r=>r.impressions||0),1);
-  const mC=Math.max(...rows.map(r=>r.clicks||0),1);
-  const mT=Math.max(...rows.map(r=>r.thruplay||0),1);
-  $('c-tbody').innerHTML=rows.map(row=>{
+  const filtered = rows.filter(r=>(r.impressions||0)>0);
+  if(!filtered.length){$('c-tbody').innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ico">📋</div><h3>Nenhuma campanha no período</h3></div></td></tr>`;return;}
+  const mI=Math.max(...filtered.map(r=>r.impressions||0),1);
+  const mC=Math.max(...filtered.map(r=>r.clicks||0),1);
+  const mT=Math.max(...filtered.map(r=>r.thruplay||0),1);
+  $('c-tbody').innerHTML=filtered.map(row=>{
     const p=(row.platform||'').toLowerCase();
     const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':'other';
     const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':row.platform||'—';
