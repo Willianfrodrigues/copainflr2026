@@ -1118,6 +1118,20 @@ async function apiFetch(path,opts={}){
   }catch(e){console.error('apiFetch',path,e.message);return null;}
 }
 
+function userCanSeeCamp(campKw){
+  if(!USER || USER.role==='admin') return true;
+  const userKws=(USER.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  if(!userKws.length) return true;
+  if(!campKw) return false;
+  const ckw=campKw.trim().toUpperCase();
+  return userKws.some(uk=>{
+    if(uk.includes('+')){
+      return uk.split('+').map(s=>s.trim()).every(part=>ckw.includes(part));
+    }
+    return ckw.includes(uk)||uk.includes(ckw);
+  });
+}
+
 function renderCampHeader(){
   const cfg=getCampConfig();
   const active=cfg.filter(c=>c.kw);
