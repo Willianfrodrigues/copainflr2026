@@ -130,6 +130,14 @@ tbody td{padding:11px 15px;font-size:13px;}
 .sheets-url-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;}
 .sheets-url-row input{flex:1;border:none;background:transparent;font-size:13px;color:var(--text);font-family:'Inter',sans-serif;outline:none;}
 .sheets-url-row input::placeholder{color:var(--muted);}
+.access-sheet-card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;}
+.access-sheet-card .cfg-field{margin-bottom:8px;}
+.access-sheet-users{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.access-user-chip{display:flex;align-items:center;gap:4px;background:var(--border2);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;}
+.access-user-chip.selected{background:var(--gold);color:#000;}
+.access-sheet-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.access-sheet-header span{font-size:13px;font-weight:600;color:var(--gold);}
+.btn-remove-sheet{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0;}
 .organico-note{font-size:12px;color:var(--muted);margin-top:8px;}
 
 /* ADMIN */
@@ -360,6 +368,14 @@ tbody td{padding:11px 15px;font-size:13px;}
         </div>
         <button class="btn-gold" onclick="saveAndTestSheets()">💾 Salvar URLs</button>
         <div class="organico-note" style="margin-top:8px;">⚠️ Deixe em branco as abas que ainda não estão prontas.</div>
+      </div>
+
+      <!-- PLANILHAS COM CONTROLE DE ACESSO -->
+      <div class="adm-section">
+        <div class="adm-section-ttl">📋 Planilhas com Controle de Acesso</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Configure as planilhas e defina quais usuários podem visualizar cada uma.</div>
+        <div id="access-sheets-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px;"></div>
+        <button class="btn-gold" onclick="saveAccessSheets()">💾 Salvar Planilhas</button>
       </div>
 
       <!-- USUÁRIOS -->
@@ -618,11 +634,86 @@ async function saveAndTestSheets(){
   else toast(res?.error||'Erro ao salvar.','red');
 }
 
+// ── ACCESS SHEETS ─────────────────────────────────────────────
+let _accessSheets = []; // [{nome, url, users:[]}]
+let _allUsers = []; // lista de usuários para mostrar chips
+
+function renderAccessSheetsList(){
+  const el = $('access-sheets-list');
+  if(!el) return;
+  if(!_accessSheets.length){
+    _accessSheets = [
+      {nome:'Rede Ronaldo',    url:'', users:[]},
+      {nome:'Florida Rental Car', url:'', users:[]},
+      {nome:'BRABET',          url:'', users:[]},
+    ];
+  }
+  el.innerHTML = _accessSheets.map((s,i)=>`
+    <div class="access-sheet-card">
+      <div class="access-sheet-header">
+        <span>📋 Planilha ${i+1}</span>
+        <button class="btn-remove-sheet" onclick="removeAccessSheet(${i})" title="Remover">✕</button>
+      </div>
+      <div class="cfg-field"><label>Nome</label><input id="as-nome-${i}" value="${s.nome||''}" placeholder="ex: Rede Ronaldo"></div>
+      <div class="cfg-field"><label>URL (CSV publicado)</label><input id="as-url-${i}" value="${s.url||''}" placeholder="...pub?gid=XXXX&output=csv"></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Usuários com acesso (clique para selecionar):</div>
+      <div class="access-sheet-users">
+        ${_allUsers.filter(u=>u.role!=='admin').map(u=>`
+          <div class="access-user-chip ${s.users.includes(u.username)?'selected':''}"
+               onclick="toggleAccessUser(${i},'${u.username}')">
+            ${u.username}${u.client&&u.client!==u.username?' ('+u.client+')':''}
+          </div>
+        `).join('')}
+        ${_allUsers.filter(u=>u.role!=='admin').length===0?'<span style="color:var(--muted);font-size:12px;">Nenhum usuário cadastrado</span>':''}
+      </div>
+    </div>
+  `).join('') + `<button class="btn-g" onclick="addAccessSheet()" style="margin-top:4px;">+ Adicionar Planilha</button>`;
+}
+
+function toggleAccessUser(sheetIdx, username){
+  const s = _accessSheets[sheetIdx];
+  if(s.users.includes(username)) s.users = s.users.filter(u=>u!==username);
+  else s.users.push(username);
+  renderAccessSheetsList();
+}
+
+function addAccessSheet(){
+  _accessSheets.push({nome:'', url:'', users:[]});
+  renderAccessSheetsList();
+}
+
+function removeAccessSheet(idx){
+  _accessSheets.splice(idx,1);
+  renderAccessSheetsList();
+}
+
+async function saveAccessSheets(){
+  // Coleta valores dos inputs
+  _accessSheets = _accessSheets.map((s,i)=>({
+    nome:  $(`as-nome-${i}`)?.value.trim()||s.nome,
+    url:   $(`as-url-${i}`)?.value.trim()||s.url,
+    users: s.users,
+  }));
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps: _campConfigCache,
+    sheets_url: '',
+    sheets_urls: JSON.parse(JSON.stringify((await apiFetch('/api/config'))?.sheets_urls||{})),
+    access_sheets: _accessSheets,
+  })});
+  if(res&&res.ok) toast('Planilhas salvas!');
+  else toast(res?.error||'Erro ao salvar.','red');
+}
+
 async function loadOrganico(silent=false){
   const data=await loadConfig();
   const urls=data?.sheets_urls||{};
+  const accessSheets = (data?.access_sheets||[]).filter(s=>{
+    if(!s.url) return false;
+    if(!s.users||!s.users.length) return USER?.role==='admin';
+    return USER?.role==='admin' || s.users.includes(USER?.username);
+  });
 
-  const hasAny=ORG_SHEETS.some(s=>urls[s.id]);
+  const hasAny=ORG_SHEETS.some(s=>urls[s.id]) || accessSheets.length>0;
   if(!hasAny){
     $('org-cards').innerHTML='';
     $('org-podium-wrap').style.display='none';
@@ -637,11 +728,24 @@ async function loadOrganico(silent=false){
     const results=await Promise.all(ORG_SHEETS.map(s=>fetchCSV(urls[s.id])));
     _orgData={};
     ORG_SHEETS.forEach((s,i)=>{if(results[i])_orgData[s.id]=results[i];});
+    // Load access sheets (planilhas com controle de acesso)
+    const accessResults = await Promise.all(accessSheets.map(s=>fetchCSV(s.url)));
+    accessSheets.forEach((s,i)=>{
+      if(accessResults[i]) _orgData['access_'+i] = accessResults[i];
+    });
+    // Inject access sheets into ORG_SHEETS for rendering
+    window._activeAccessSheets = accessSheets.map((s,i)=>({
+      id:'access_'+i, label:s.nome||'Planilha '+(i+1), icon:'📋', color:'#8B5CF6'
+    }));
     renderOrgCards();
     renderOrgPodium();
     renderOrgSubTabs();
     showOrgSheet('all');
   }finally{if(!silent) loading(false);}
+}
+
+function getAllSheets(){
+  return [...ORG_SHEETS, ...(window._activeAccessSheets||[])];
 }
 
 function fmtOrgNum(v){
@@ -714,7 +818,7 @@ function getSheetTotals(rows){
 function renderOrgCards(){
   // Soma florida + bra + rr
   let grandImp=0, grandView=0, grandInfl=0, grandPend=0;
-  ORG_SHEETS.filter(s=>s.id!=='geral').forEach(s=>{
+  getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
     const rows=_orgData[s.id]; if(!rows) return;
     const t=getSheetTotals(rows); grandImp+=t.imp; grandView+=t.view;
     const h=rows[0]; const data=rows.slice(1).filter(r=>r.some(c=>c));
@@ -737,7 +841,7 @@ function renderOrgCards(){
     </div>
   </div>` : `<div class="kpi-card" style="--ac:#F5C842;opacity:.35;"><div class="kpi-lbl">🏠 Dados Gerais</div><div class="kpi-val nd">Aguardando dados</div></div>`;
 
-  const cards = ORG_SHEETS.filter(s=>s.id!=='geral').map(s=>{
+  const cards = getAllSheets().filter(s=>s.id!=='geral').map(s=>{
     const rows=_orgData[s.id];
     if(!rows) return `<div class="kpi-card" style="--ac:${s.color};opacity:.35;"><div class="kpi-lbl">${s.icon} ${s.label}</div><div class="kpi-val nd">Não configurada</div></div>`;
     const headers=rows[0];
@@ -768,7 +872,7 @@ function renderOrgCards(){
 
 function renderOrgPodium(){
   const ranking={};
-  ORG_SHEETS.filter(s=>s.id!=='geral').forEach(s=>{
+  getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
     const rows=_orgData[s.id];if(!rows)return;
     const h=rows[0];
     const iI=h.findIndex(x=>/influenc/i.test(x));
@@ -805,7 +909,7 @@ function renderOrgPodium(){
 }
 
 function renderOrgSubTabs(){
-  const tabs=ORG_SHEETS.filter(s=>_orgData[s.id]&&s.id!=='geral');
+  const tabs=getAllSheets().filter(s=>_orgData[s.id]&&s.id!=='geral');
   $('org-subtabs').style.display=tabs.length?'flex':'none';
   // "Todas" unificada + abas individuais
   const allBtn=`<button class="tab org-subtab" id="orgtab-all" onclick="showOrgSheet('all')" style="border-top:2px solid #F5C842;">🔀 Todas as Campanhas</button>`;
@@ -1032,7 +1136,7 @@ function renderKPIs(k){
   // Soma impressões orgânicas (apenas campanhas: florida, bra, rr — não Dados Gerais)
   let orgImp=0;
   if(typeof _orgData !== 'undefined'){
-    ORG_SHEETS.filter(s=>s.id!=='geral').forEach(s=>{ orgImp+=getSheetTotals(_orgData[s.id]).imp; });
+    getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{ orgImp+=getSheetTotals(_orgData[s.id]).imp; });
   }
   const totalImp = (Number(k.impressions)||0) + orgImp;
 
@@ -1302,7 +1406,12 @@ function switchTab(name,el){
 // ADMIN USERS
 async function loadAdminUsers(){
   const data=await apiFetch('/api/users');if(!data)return;
+  _allUsers = data;
   $('adm-tbody').innerHTML=data.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.client||'—'}</td><td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td><td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td><td>${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td></tr>`).join('');
+  // Load access sheets config
+  const cfg = await apiFetch('/api/config');
+  if(cfg?.access_sheets?.length) _accessSheets = cfg.access_sheets;
+  renderAccessSheetsList();
 }
 async function adminAdd(){
   const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim();
