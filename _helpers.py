@@ -29,7 +29,8 @@ def init_db():
             password   TEXT NOT NULL,
             role       TEXT NOT NULL DEFAULT 'client',
             client     TEXT,
-            campaigns  TEXT[]  DEFAULT '{}'
+            campaigns  TEXT[]  DEFAULT '{}',
+            exclude    TEXT[]  DEFAULT '{}'
         )
     """)
     cur.execute("""
@@ -48,14 +49,14 @@ def verify_user(username: str, password: str):
     conn = get_db()
     cur  = conn.cursor()
     cur.execute(
-        "SELECT username, role, client, campaigns FROM users WHERE username=%s AND password=%s",
+        "SELECT username, role, client, campaigns, exclude FROM users WHERE username=%s AND password=%s",
         (username, _hash(password))
     )
     row = cur.fetchone()
     cur.close(); conn.close()
     if not row:
         return None
-    return {"username": row[0], "role": row[1], "client": row[2], "campaigns": list(row[3] or [])}
+    return {"username": row[0], "role": row[1], "client": row[2], "campaigns": list(row[3] or []), "exclude": list(row[4] or [])}
 
 def create_token(user: dict) -> str:
     payload = {
@@ -63,6 +64,7 @@ def create_token(user: dict) -> str:
         "role":      user["role"],
         "client":    user["client"],
         "campaigns": user["campaigns"],
+        "exclude":   user.get("exclude", []),
         "exp":       datetime.utcnow() + timedelta(hours=12)
     }
     return jwt.encode(payload, os.environ.get("JWT_SECRET","inflr@2026#segredo!"), algorithm="HS256")
@@ -119,7 +121,7 @@ def build_campaign_filter(user: dict) -> str:
 def cors_headers():
     return {
         "Access-Control-Allow-Origin":  "*",
-        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Authorization, Content-Type",
         "Content-Type": "application/json"
     }
