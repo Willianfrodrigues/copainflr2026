@@ -917,7 +917,7 @@ function showOrgSheet(id){
       const iI   = h.findIndex(x=>/influenc|org[âa]nico/i.test(x));
       const iC   = h.findIndex(x=>/conte[uú]|stories|post/i.test(x));
       const iImp = h.findIndex(x=>/impress/i.test(x));
-      const iView= h.findIndex(x=>/view/i.test(x));
+      const iView= h.findIndex(x=>/^view/i.test(x));
       const iClk = h.findIndex(x=>/clique|click/i.test(x));
       const iAlcU= h.findIndex(x=>/alcance/i.test(x));
       let _ec=0;
@@ -933,7 +933,7 @@ function showOrgSheet(id){
         merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
         merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
         merged[key].clk  += parseOrgNum(r[iClk>=0?iClk:5]||'');
-        merged[key].alc  += parseOrgNum(r[iAlcU>=0?iAlcU:-1]||'');
+        merged[key].alc  += parseOrgNum(r[iAlcU>=0?iAlcU:2]||'');
       });
     });
 
@@ -947,14 +947,15 @@ function showOrgSheet(id){
 
     const totalClk=rows.reduce((s,r)=>s+r.clk,0);
     const totalAlc=rows.reduce((s,r)=>s+(r.alc||0),0);
-    $('org-head').innerHTML=`<tr><th>Influenciador</th><th>Conteúdo</th><th>Impressões</th><th>Alcance</th><th>Cliques</th><th>Views</th></tr>`;
+    const hasView=rows.some(r=>r.view>0);
+    $('org-head').innerHTML=`<tr><th>Influenciador</th><th>Conteúdo</th><th>Impressões</th><th>Alcance</th><th>Cliques</th>${hasView?'<th>Views</th>':''}</tr>`;
     $('org-body').innerHTML=[
       `<tr style="background:var(--bg2);font-weight:700;border-bottom:2px solid var(--border);">
         <td>TOTAL</td><td>—</td>
         <td>${fmtOrgNum(String(totalImp))}</td>
         <td>${fmtOrgNum(String(totalAlc))}</td>
         <td>${fmtOrgNum(String(totalClk))}</td>
-        <td>${fmtOrgNum(String(totalView))}</td>
+        ${hasView?`<td>${fmtOrgNum(String(totalView))}</td>`:''}
       </tr>`,
       ...rows.map(r=>{
         const isPend=r.imp===0;
@@ -965,7 +966,7 @@ function showOrgSheet(id){
           <td>${isPend?`<span style="font-size:11px;color:#F5C842;background:rgba(245,200,66,.1);padding:2px 7px;border-radius:20px;">⏳ Pendente</span>`:`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:#F5C842;"></div></div><span class="bar-v">${fmtOrgNum(String(r.imp))}</span></div>`}</td>
           <td>${fmtOrgNum(String(r.alc||0))}</td>
           <td style="font-weight:600;color:#1EC99B;">${r.clk>0?fmtOrgNum(String(r.clk)):'—'}</td>
-          <td>${fmtOrgNum(String(r.view))}</td>
+          ${hasView?`<td>${fmtOrgNum(String(r.view))}</td>`:''}
         </tr>`;
       })
     ].join('');
@@ -1022,7 +1023,7 @@ function showOrgSheet(id){
   }
 
   // Formato antigo — mostra primeiras 4 colunas, para em 3 linhas vazias consecutivas
-  const headers=h.slice(0,5);
+  const headers=h.slice(0,4);
   let emptyCount=0;
   const data=rows.slice(1).filter(r=>{
     if(!r.some(c=>c)){emptyCount++;return false;}
@@ -1036,7 +1037,7 @@ function showOrgSheet(id){
   const maxImp=Math.max(...data.map(r=>parseOrgNum(r[idxImp]||'')),1);
   $('org-head').innerHTML=`<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
   $('org-body').innerHTML=data.map(r=>{
-    const row4=r.slice(0,5);
+    const row4=r.slice(0,4);
     const isTotal=/total/i.test(row4[0]||'');
     const style=isTotal?'background:var(--bg2);font-weight:700;border-top:2px solid var(--border);':'';
     const cells=headers.map((_,i)=>{
