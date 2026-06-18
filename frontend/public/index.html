@@ -1119,7 +1119,7 @@ function renderComparativo(rows,kpi){
       byPlat[k].clk+=r[c.cfg.click]||0;
       byPlat[k].tp+=r.thruplay||0;
     });
-    const platRows=Object.entries(byPlat).sort((a,b)=>b[1].imp-a[1].imp);
+    const platRows=Object.entries(byPlat).filter(([,d])=>d.imp>0).sort((a,b)=>b[1].imp-a[1].imp);
     if(!platRows.length)return'';
     return`<div class="tbl-card" style="margin-bottom:16px;border-top:3px solid ${c.color};">
       <div class="tbl-top"><div class="tbl-ttl">${c.cfg.nome} — por Plataforma</div></div>
