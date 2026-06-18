@@ -918,6 +918,7 @@ function showOrgSheet(id){
       const iC   = h.findIndex(x=>/conte[uú]|stories|post/i.test(x));
       const iImp = h.findIndex(x=>/impress/i.test(x));
       const iView= h.findIndex(x=>/view|alcance/i.test(x));
+      const iClk = h.findIndex(x=>/clique|click/i.test(x));
       let _ec=0;
       rows.slice(1).forEach(r=>{
         if(!r.some(c=>c)){_ec++;return;}
@@ -927,9 +928,10 @@ function showOrgSheet(id){
         if(!name||/total/i.test(name)) return;
         const cont=(r[iC>=0?iC:0]||'').trim();
         const key=name+'||'+cont;
-        if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0};
+        if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0,clk:0};
         merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
         merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
+        merged[key].clk  += parseOrgNum(r[iClk>=0?iClk:5]||'');
       });
     });
 
@@ -941,11 +943,13 @@ function showOrgSheet(id){
     if($('org-tbl-title'))$('org-tbl-title').textContent='🔀 Todas as Campanhas — Unificado';
     if($('org-tbl-total'))$('org-tbl-total').textContent=`${rows.length} influenciadores`;
 
-    $('org-head').innerHTML=`<tr><th>Influenciador</th><th>Conteúdo</th><th>Impressões</th><th>Views</th></tr>`;
+    const totalClk=rows.reduce((s,r)=>s+r.clk,0);
+    $('org-head').innerHTML=`<tr><th>Influenciador</th><th>Conteúdo</th><th>Impressões</th><th>Cliques</th><th>Views</th></tr>`;
     $('org-body').innerHTML=[
       `<tr style="background:var(--bg2);font-weight:700;border-bottom:2px solid var(--border);">
         <td>TOTAL</td><td>—</td>
         <td>${fmtOrgNum(String(totalImp))}</td>
+        <td>${fmtOrgNum(String(totalClk))}</td>
         <td>${fmtOrgNum(String(totalView))}</td>
       </tr>`,
       ...rows.map(r=>{
@@ -955,6 +959,7 @@ function showOrgSheet(id){
           <td style="font-weight:600;">${r.influenciador}</td>
           <td style="color:var(--muted);font-size:12px;">${r.conteudo||'—'}</td>
           <td>${isPend?`<span style="font-size:11px;color:#F5C842;background:rgba(245,200,66,.1);padding:2px 7px;border-radius:20px;">⏳ Pendente</span>`:`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:#F5C842;"></div></div><span class="bar-v">${fmtOrgNum(String(r.imp))}</span></div>`}</td>
+          <td style="font-weight:600;color:#1EC99B;">${r.clk>0?fmtOrgNum(String(r.clk)):'—'}</td>
           <td>${fmtOrgNum(String(r.view))}</td>
         </tr>`;
       })
