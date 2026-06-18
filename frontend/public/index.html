@@ -315,8 +315,8 @@ tbody td{padding:11px 15px;font-size:13px;}
             <div class="cfg-field"><label>Palavra-chave (CAMPAIGN_NAME)</label><input id="c1-kw" placeholder="ex: REDE RONALDO"></div>
             <div class="cfg-field"><label>Tipo de clique</label>
               <select id="c1-click">
-                <option value="clicks">Cliques no Link</option>
-                <option value="clicks_link">PG View</option>
+                <option value="clicks_link">Cliques no Link</option>
+                <option value="clicks">Landing Page View</option>
               </select>
             </div>
           </div>
@@ -326,8 +326,8 @@ tbody td{padding:11px 15px;font-size:13px;}
             <div class="cfg-field"><label>Palavra-chave (CAMPAIGN_NAME)</label><input id="c2-kw" placeholder="ex: BRA BET"></div>
             <div class="cfg-field"><label>Tipo de clique</label>
               <select id="c2-click">
-                <option value="clicks">Cliques no Link</option>
-                <option value="clicks_link">PG View</option>
+                <option value="clicks_link">Cliques no Link</option>
+                <option value="clicks">Landing Page View</option>
               </select>
             </div>
           </div>
@@ -337,8 +337,8 @@ tbody td{padding:11px 15px;font-size:13px;}
             <div class="cfg-field"><label>Palavra-chave (CAMPAIGN_NAME)</label><input id="c3-kw" placeholder="ex: PALAVRA CHAVE"></div>
             <div class="cfg-field"><label>Tipo de clique</label>
               <select id="c3-click">
-                <option value="clicks">Cliques no Link</option>
-                <option value="clicks_link">PG View</option>
+                <option value="clicks_link">Cliques no Link</option>
+                <option value="clicks">Landing Page View</option>
               </select>
             </div>
           </div>
@@ -496,7 +496,7 @@ let USER=null,TOKEN=null,allCRows=[],allInflRows=[],CH={};
 let _inflSortKey='impressions',_inflSortDir=-1;
 const $=id=>document.getElementById(id);
 const CAMP_COLORS=['#F5C842','#1EC99B','#3B82F6'];
-const CLICK_LABELS={clicks:'Cliques no Link',clicks_link:'PG View'};
+const CLICK_LABELS={clicks_link:'Cliques no Link',clicks:'Landing Page View'};
 
 function fmt(n){if(n==null)return'—';n=Number(n);if(isNaN(n))return'—';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1000)return(n/1000).toFixed(1)+'K';return n.toLocaleString('pt-BR');}
 function fmtP(n){return(n==null||isNaN(Number(n)))?'—':Number(n).toFixed(2)+'%';}
