@@ -373,10 +373,11 @@ tbody td{padding:11px 15px;font-size:13px;}
           <div class="af"><label>Usuário</label><input id="nu" placeholder="ex: interno01"></div>
           <div class="af"><label>Senha</label><input type="password" id="np" placeholder="senha segura"></div>
           <div class="af"><label>Nome</label><input id="nc" placeholder="ex: Time Copa"></div>
-          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET, COPA"><div class="hint">Separe por vírgula. Vazio = vê todas as campanhas configuradas.</div></div>
+          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET, COPA"><div class="hint">Separe por vírgula. Vazio = vê todas.</div></div>
+          <div class="af"><label>Excluir (palavras-chave)</label><input id="nexclude" placeholder="ex: INFLR, AWARENESS"><div class="hint">Oculta campanhas com estas palavras.</div></div>
           <button class="btn-g" onclick="adminAdd()" style="height:38px;">+ Adicionar</button>
         </div>
-        <table><thead><tr><th>Usuário</th><th>Nome</th><th>Palavras-chave</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
+        <table><thead><tr><th>Usuário</th><th>Nome</th><th>Acesso</th><th>Excluir</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
       </div><!-- fim adm-section usuarios -->
     </div><!-- fim admin-panel -->
 
@@ -1104,11 +1105,15 @@ async function apiFetch(path,opts={}){
   }catch(e){console.error('apiFetch',path,e.message);return null;}
 }
 
+function userExcludesCamp(campName){
+  const excl=(USER?.exclude||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  if(!excl.length) return false;
+  return excl.some(e=>(campName||'').toUpperCase().includes(e));
+}
+
 function renderCampHeader(){
   const cfg=getCampConfig();
-  const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
-  const _canSee=kw=>{if(!_uKws.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
-  const active=cfg.filter(c=>c.kw&&_canSee(c.kw)&&!userExcludesCamp(c.kw));
+  const active=cfg.filter(c=>c.kw);
   const el=$('camp-header');
   if(!active.length){
     el.setAttribute('style','display:block');
@@ -1117,7 +1122,7 @@ function renderCampHeader(){
   }
   el.setAttribute('style',`display:grid;grid-template-columns:repeat(${active.length},1fr);gap:14px;margin-bottom:24px;`);
   el.innerHTML=cfg.map((c,i)=>{
-    if(!c.kw||!_canSee(c.kw)||userExcludesCamp(c.kw)) return '';
+    if(!c.kw) return '';
     return `<div class="camp-slot" style="--slot-color:${CAMP_COLORS[i]}">
       <div class="camp-slot-num">Campanha ${i+1}</div>
       <div class="camp-slot-name">${c.nome||'—'}</div>
@@ -1182,7 +1187,7 @@ function renderCharts(rows){ /* gráficos removidos */ }
 function destroyCharts(){Object.values(CH).forEach(c=>c&&c.destroy());CH={};}
 
 function renderCampTable(rows){
-  const filtered = rows.filter(r=>(r.impressions||0)>0);
+  const filtered = rows.filter(r=>(r.impressions||0)>0 && !userExcludesCamp(r.CAMPAIGN_NAME));
   if(!filtered.length){$('c-tbody').innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ico">📋</div><h3>Nenhuma campanha no período</h3></div></td></tr>`;return;}
   const mI=Math.max(...filtered.map(r=>r.impressions||0),1);
   const mC=Math.max(...filtered.map(r=>r.clicks||0),1);
@@ -1198,11 +1203,8 @@ function renderCampTable(rows){
 function renderComparativo(rows,kpi){
   const cfg=getCampConfig();
   // Agrupa por campanha configurada
-  const _uKwsC=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
-  const _canSeeC=kw=>{if(!_uKwsC.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKwsC.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
   const cards=cfg.map((c,i)=>{
-    if(!c.kw)return null;
-    if(!_canSeeC(c.kw))return null;
+    if(!c.kw)return null; // pula não configuradas
     const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));
     const imp=campRows.reduce((a,r)=>a+(r.impressions||0),0);
     const clk=campRows.reduce((a,r)=>a+(r[c.click]||0),0);
@@ -1436,7 +1438,7 @@ function switchTab(name,el){
 async function loadAdminUsers(){
   const data=await apiFetch('/api/users');if(!data)return;
   _allUsers = data;
-  $('adm-tbody').innerHTML=data.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.client||'—'}</td><td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td><td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td><td>${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td></tr>`).join('');
+  $('adm-tbody').innerHTML=data.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.client||'—'}</td><td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td><td style="font-size:12px;color:#F05A5A;font-family:monospace;">${(u.exclude||[]).join(', ')||'—'}</td><td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td><td>${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td></tr>`).join('');
   // Load access sheets config
   const cfg = await apiFetch('/api/config');
   if(cfg?.access_sheets?.length){
@@ -1456,11 +1458,12 @@ async function loadAdminUsers(){
   renderAccessSheetsList();
 }
 async function adminAdd(){
-  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim();
+  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim(),exRaw=($('nexclude')?.value||'').trim();
   if(!username||!password)return toast('Preencha usuário e senha.','red');
   const campaigns=kRaw.split(',').map(s=>s.trim()).filter(Boolean);
-  const res=await apiFetch('/api/users',{method:'POST',body:JSON.stringify({username,password,client,campaigns})});
-  if(res?.ok){['nu','np','nc','nk'].forEach(id=>$(id).value='');toast('Usuário criado!');loadAdminUsers();}
+  const exclude=exRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  const res=await apiFetch('/api/users',{method:'POST',body:JSON.stringify({username,password,client,campaigns,exclude})});
+  if(res?.ok){['nu','np','nc','nk','nexclude'].forEach(id=>{if($(id))$(id).value='';});toast('Usuário criado!');loadAdminUsers();}
   else toast(res?.error||'Erro ao criar.','red');
 }
 async function adminDel(username){
