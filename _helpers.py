@@ -92,11 +92,7 @@ def get_bq():
     return bigquery.Client(project=BQ_PROJECT)
 
 def build_campaign_filter(user: dict) -> str:
-    """Filtra por palavras-chave do usuário. Vazio = vê tudo. Admin = vê tudo.
-    Separar por vírgula = OR. Usar + dentro de uma keyword = AND.
-    Ex: 'REDE, BRA BET+COPA' → REDE OR (BRA BET AND COPA)
-    exclude: lista de palavras que devem ser EXCLUÍDAS do resultado.
-    """
+    """Filtra por palavras-chave do usuário. Vazio = vê tudo. Admin = vê tudo."""
     if user["role"] == "admin":
         return "1=1"
     keywords = [k.strip().upper() for k in user.get("campaigns", []) if k.strip()]
@@ -108,8 +104,8 @@ def build_campaign_filter(user: dict) -> str:
         or_conditions = []
         for kw in keywords:
             kw = kw.replace("'", "''").replace("\\", "\\\\")
-            if '+' in kw:
-                parts = [p.strip() for p in kw.split('+') if p.strip()]
+            if "+" in kw:
+                parts = [p.strip() for p in kw.split("+") if p.strip()]
                 and_cond = " AND ".join([f"UPPER(CAMPAIGN_NAME) LIKE '%{p}%'" for p in parts])
                 or_conditions.append(f"({and_cond})")
             else:
@@ -119,11 +115,10 @@ def build_campaign_filter(user: dict) -> str:
     if not excludes:
         return include_filter
 
-    exclude_conditions = " AND ".join([
-        f"UPPER(CAMPAIGN_NAME) NOT LIKE '%{e.replace(chr(39), chr(39)+chr(39))}%'"
-        for e in excludes
-    ])
-    return f"({include_filter} AND {exclude_conditions})" "
+    excl_parts = [f"UPPER(CAMPAIGN_NAME) NOT LIKE '%{e.replace(chr(39), chr(39)*2)}%'" for e in excludes]
+    exclude_conditions = " AND ".join(excl_parts)
+    return f"({include_filter} AND {exclude_conditions})"
+
 
 # ── RESPONSE HELPERS ─────────────────────────────────────────
 def cors_headers():
