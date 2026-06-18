@@ -917,8 +917,9 @@ function showOrgSheet(id){
       const iI   = h.findIndex(x=>/influenc|org[âa]nico/i.test(x));
       const iC   = h.findIndex(x=>/conte[uú]|stories|post/i.test(x));
       const iImp = h.findIndex(x=>/impress/i.test(x));
-      const iView= h.findIndex(x=>/view|alcance/i.test(x));
+      const iView= h.findIndex(x=>/view/i.test(x));
       const iClk = h.findIndex(x=>/clique|click/i.test(x));
+      const iAlcU= h.findIndex(x=>/alcance/i.test(x));
       let _ec=0;
       rows.slice(1).forEach(r=>{
         if(!r.some(c=>c)){_ec++;return;}
@@ -928,12 +929,11 @@ function showOrgSheet(id){
         if(!name||/total/i.test(name)) return;
         const cont=(r[iC>=0?iC:0]||'').trim();
         const key=name+'||'+cont;
-        const iAlcU = h.findIndex(x=>/alcance/i.test(x));
         if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0,clk:0,alc:0};
         merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
         merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
         merged[key].clk  += parseOrgNum(r[iClk>=0?iClk:5]||'');
-        merged[key].alc  += parseOrgNum(r[iAlcU>=0?iAlcU:2]||'');
+        merged[key].alc  += parseOrgNum(r[iAlcU>=0?iAlcU:-1]||'');
       });
     });
 
