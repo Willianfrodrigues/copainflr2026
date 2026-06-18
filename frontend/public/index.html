@@ -851,13 +851,27 @@ function renderOrgPodium(){
   const ranking={};
   getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
     const rows=_orgData[s.id];if(!rows)return;
-    const h=rows[0];
-    const iI=h.findIndex(x=>/influenc/i.test(x));
-    const iM=h.findIndex(x=>/impress/i.test(x));
+    // Detecta linha de cabeçalho: formato antigo (Influenciador) ou novo (Orgânico + Stories)
+    let hIdx=0, iI=-1, iM=-1;
+    for(let ri=0;ri<Math.min(6,rows.length);ri++){
+      const cand=rows[ri];
+      const tInfl=cand.findIndex(x=>/influenc/i.test(x));
+      const tOrg =cand.findIndex(x=>/org[âa]nico/i.test(x));
+      const tImp =cand.findIndex(x=>/impress/i.test(x));
+      if(tImp>=0 && (tInfl>=0||tOrg>=0)){
+        hIdx=ri; iI=tInfl>=0?tInfl:tOrg; iM=tImp; break;
+      }
+    }
     if(iI<0||iM<0)return;
-    rows.slice(1).filter(r=>r.some(c=>c)).forEach(r=>{
+    // Para antes de seções secundárias (Amplificação, Posts/Stories, Over delivery, TOTAL GERAL)
+    const allRows=rows.slice(hIdx+1);
+    const stopIdx=allRows.findIndex(r=>{
+      const a=(r[0]||'').trim(), b=(r[iI]||'').trim();
+      return a && !b && /posts?|stories|amplif|over.?delivery|total.?geral/i.test(a);
+    });
+    (stopIdx>=0?allRows.slice(0,stopIdx):allRows).filter(r=>r.some(c=>c)).forEach(r=>{
       const name=(r[iI]||'').trim();
-      if(!name||/total/i.test(name))return;
+      if(!name||/^total/i.test(name))return;
       const imp=parseOrgNum(r[iM]);
       ranking[name]=(ranking[name]||0)+imp;
     });
@@ -958,48 +972,29 @@ function showOrgSheet(id){
   const rows=_orgData[id];
   if(!rows||!s){$('org-head').innerHTML='';$('org-body').innerHTML='';return;}
 
-  // Detecta formato da planilha — nova (Stories, Orgânico, Postagem, Impressões, Alcance, Cliques no Link)
-  // O cabeçalho pode estar em qualquer uma das primeiras 6 linhas (linha 3 ou 4 no novo formato)
-  let hRowIdx=0, iStories=-1, iOrg=-1, iPost=-1, iImp=-1, iAlc=-1, iClk=-1;
-  for(let ri=0; ri<Math.min(6,rows.length); ri++){
-    const candidate=rows[ri];
-    const tS=candidate.findIndex(x=>/stories/i.test(x));
-    const tO=candidate.findIndex(x=>/org[âa]nico/i.test(x));
-    const tI=candidate.findIndex(x=>/impress/i.test(x));
-    if(tS>=0 && tO>=0 && tI>=0){
-      hRowIdx=ri; iStories=tS; iOrg=tO; iImp=tI;
-      iPost=candidate.findIndex(x=>/postagem/i.test(x));
-      iAlc=candidate.findIndex(x=>/alcance/i.test(x));
-      iClk=candidate.findIndex(x=>/clique/i.test(x));
-      break;
-    }
-  }
-  const h=rows[hRowIdx]||rows[0];
+  // Detecta formato da planilha — nova (Stories, Orgânico, Postagem, Impressões, Alcance, Cliques)
+  const h=rows[0];
+  const iStories = h.findIndex(x=>/stories/i.test(x));
+  const iOrg     = h.findIndex(x=>/org[âa]nico/i.test(x));
+  const iPost    = h.findIndex(x=>/postagem/i.test(x));
+  const iImp     = h.findIndex(x=>/impress/i.test(x));
+  const iAlc     = h.findIndex(x=>/alcance/i.test(x));
+  const iClk     = h.findIndex(x=>/clique/i.test(x));
 
   const isNewFormat = iStories>=0 && iOrg>=0 && iImp>=0;
 
   if(isNewFormat){
-    // Novo formato: Stories | Orgânico | Postagem | Impressões | Alcance | Cliques no Link
+    // Novo formato: Stories | Orgânico | Postagem | Impressões | Alcance | Cliques
     const cols = [
-      {label:'Stories',         idx:iStories},
-      {label:'Orgânico',        idx:iOrg},
-      {label:'Postagem',        idx:iPost>=0?iPost:-1},
-      {label:'Impressões',      idx:iImp},
-      {label:'Alcance',         idx:iAlc>=0?iAlc:-1},
-      {label:'Cliques no Link', idx:iClk>=0?iClk:-1},
+      {label:'Stories',    idx:iStories},
+      {label:'Orgânico',   idx:iOrg},
+      {label:'Postagem',   idx:iPost>=0?iPost:-1},
+      {label:'Impressões', idx:iImp},
+      {label:'Alcance',    idx:iAlc>=0?iAlc:-1},
+      {label:'Cliques',    idx:iClk>=0?iClk:-1},
     ].filter(c=>c.idx>=0);
 
-    // Lê linhas de dados até encontrar outra seção (novo cabeçalho como Posts/Stories, Amplificação)
-    // Detecta linha de cabeçalho secundário: célula A não vazia E parece texto de cabeçalho E não tem Orgânico na col B
-    const allDataRows = rows.slice(hRowIdx+1);
-    const dataStopIdx = allDataRows.findIndex(r=>{
-      const a=(r[0]||'').trim();
-      const b=(r[iOrg]||'').trim();
-      // É outro cabeçalho se: col A tem texto parecendo header E col B (Orgânico) está vazia
-      return a && !b && /posts?|stories|amplif|over.?delivery|total.?geral/i.test(a);
-    });
-    const data=(dataStopIdx>=0 ? allDataRows.slice(0,dataStopIdx) : allDataRows)
-      .filter(r=>r.some(c=>c) && r[iOrg]?.trim() && !/total/i.test(r[iOrg]));
+    const data=rows.slice(1).filter(r=>r.some(c=>c)&&r[iOrg]?.trim()&&!/total/i.test(r[iOrg]));
     const maxImp=Math.max(...data.map(r=>parseOrgNum(r[iImp]||'')),1);
 
     if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
@@ -1021,12 +1016,9 @@ function showOrgSheet(id){
     return;
   }
 
-  // Formato antigo — mostra primeiras 4 colunas, para ao encontrar segunda seção (Over delivery / TOTAL GERAL)
+  // Formato antigo — mostra primeiras 4 colunas
   const headers=h.slice(0,4);
-  const allOldRows=rows.slice(1).filter(r=>r.some(c=>c));
-  // Encontra onde começa a segunda seção para ignorar
-  const oldStopIdx=allOldRows.findIndex(r=>/over.?delivery|total.?geral/i.test((r[0]||'').trim()));
-  const data=oldStopIdx>=0 ? allOldRows.slice(0,oldStopIdx) : allOldRows;
+  const data=rows.slice(1).filter(r=>r.some(c=>c));
   if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
   if($('org-tbl-total'))$('org-tbl-total').textContent=`${data.length} linhas`;
   const idxImp=headers.findIndex(h=>/impress/i.test(h));
@@ -1126,25 +1118,9 @@ async function apiFetch(path,opts={}){
   }catch(e){console.error('apiFetch',path,e.message);return null;}
 }
 
-function userCanSeeCamp(campKw){
-  // Admin vê tudo. Usuário sem campanhas configuradas vê tudo.
-  if(!USER || USER.role==='admin') return true;
-  const userKws = (USER.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
-  if(!userKws.length) return true; // sem restrição = vê todas
-  if(!campKw) return false;
-  const ckw = campKw.trim().toUpperCase();
-  // Cada entrada do usuário é OR (vírgula). Dentro de cada entrada pode ter AND (+).
-  return userKws.some(uk=>{
-    if(uk.includes('+')){
-      return uk.split('+').map(s=>s.trim()).every(part=>ckw.includes(part));
-    }
-    return ckw.includes(uk) || uk.includes(ckw);
-  });
-}
-
 function renderCampHeader(){
   const cfg=getCampConfig();
-  const active=cfg.filter(c=>c.kw && userCanSeeCamp(c.kw));
+  const active=cfg.filter(c=>c.kw);
   const el=$('camp-header');
   if(!active.length){
     el.setAttribute('style','display:block');
@@ -1153,7 +1129,7 @@ function renderCampHeader(){
   }
   el.setAttribute('style',`display:grid;grid-template-columns:repeat(${active.length},1fr);gap:14px;margin-bottom:24px;`);
   el.innerHTML=cfg.map((c,i)=>{
-    if(!c.kw || !userCanSeeCamp(c.kw)) return '';
+    if(!c.kw) return '';
     return `<div class="camp-slot" style="--slot-color:${CAMP_COLORS[i]}">
       <div class="camp-slot-num">Campanha ${i+1}</div>
       <div class="camp-slot-name">${c.nome||'—'}</div>
