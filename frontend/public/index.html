@@ -898,28 +898,29 @@ function showOrgSheet(id){
   document.querySelectorAll('.org-subtab').forEach(t=>t.classList.remove('active'));
   const el=$('orgtab-'+id);if(el)el.classList.add('active');
 
-  // Vista unificada: junta todas as 3 campanhas (florida, bra, rr)
+  const allSheets = getAllSheets();
+
+  // Vista unificada
   if(id==='all'){
-    const campSheets=ORG_SHEETS.filter(s=>s.id!=='geral'&&_orgData[s.id]);
+    const campSheets=allSheets.filter(s=>_orgData[s.id]);
     if(!campSheets.length) return;
 
-    // Agrega por influenciador + conteúdo somando todas as planilhas
     const merged={};
     campSheets.forEach(s=>{
       const rows=_orgData[s.id];
       const h=rows[0];
-      const iI   = h.findIndex(x=>/influenc/i.test(x));
-      const iC   = h.findIndex(x=>/conte[uú]/i.test(x));
+      const iI   = h.findIndex(x=>/influenc|org[âa]nico/i.test(x));
+      const iC   = h.findIndex(x=>/conte[uú]|stories|post/i.test(x));
       const iImp = h.findIndex(x=>/impress/i.test(x));
-      const iView= h.findIndex(x=>/view/i.test(x));
+      const iView= h.findIndex(x=>/view|alcance/i.test(x));
       rows.slice(1).filter(r=>r.some(c=>c)).forEach(r=>{
-        const name=(r[iI>=0?iI:0]||'').trim();
+        const name=(r[iI>=0?iI:1]||'').trim();
         if(!name||/total/i.test(name)) return;
-        const cont=(r[iC>=0?iC:1]||'').trim();
+        const cont=(r[iC>=0?iC:0]||'').trim();
         const key=name+'||'+cont;
         if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0};
-        merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:2]||'');
-        merged[key].view += parseOrgNum(r[iView>=0?iView:3]||'');
+        merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
+        merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
       });
     });
 
@@ -952,11 +953,57 @@ function showOrgSheet(id){
     return;
   }
 
-  // Vista individual — mostra apenas colunas A até D (0-3)
-  const s=ORG_SHEETS.find(x=>x.id===id);
+  // Vista individual
+  const s=allSheets.find(x=>x.id===id);
   const rows=_orgData[id];
-  if(!rows){$('org-head').innerHTML='';$('org-body').innerHTML='';return;}
-  const headers=rows[0].slice(0,4);
+  if(!rows||!s){$('org-head').innerHTML='';$('org-body').innerHTML='';return;}
+
+  // Detecta formato da planilha — nova (Stories, Orgânico, Postagem, Impressões, Alcance, Cliques)
+  const h=rows[0];
+  const iStories = h.findIndex(x=>/stories/i.test(x));
+  const iOrg     = h.findIndex(x=>/org[âa]nico/i.test(x));
+  const iPost    = h.findIndex(x=>/postagem/i.test(x));
+  const iImp     = h.findIndex(x=>/impress/i.test(x));
+  const iAlc     = h.findIndex(x=>/alcance/i.test(x));
+  const iClk     = h.findIndex(x=>/clique/i.test(x));
+
+  const isNewFormat = iStories>=0 && iOrg>=0 && iImp>=0;
+
+  if(isNewFormat){
+    // Novo formato: Stories | Orgânico | Postagem | Impressões | Alcance | Cliques
+    const cols = [
+      {label:'Stories',    idx:iStories},
+      {label:'Orgânico',   idx:iOrg},
+      {label:'Postagem',   idx:iPost>=0?iPost:-1},
+      {label:'Impressões', idx:iImp},
+      {label:'Alcance',    idx:iAlc>=0?iAlc:-1},
+      {label:'Cliques',    idx:iClk>=0?iClk:-1},
+    ].filter(c=>c.idx>=0);
+
+    const data=rows.slice(1).filter(r=>r.some(c=>c)&&r[iOrg]?.trim()&&!/total/i.test(r[iOrg]));
+    const maxImp=Math.max(...data.map(r=>parseOrgNum(r[iImp]||'')),1);
+
+    if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
+    if($('org-tbl-total'))$('org-tbl-total').textContent=`${data.length} linhas`;
+
+    $('org-head').innerHTML=`<tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr>`;
+    $('org-body').innerHTML=data.map(r=>{
+      return`<tr>${cols.map(c=>{
+        const v=(r[c.idx]||'').trim()||'—';
+        if(c.label==='Impressões'){
+          const n=parseOrgNum(v);
+          if(n===0) return`<td><span style="font-size:11px;color:#F5C842;background:rgba(245,200,66,.1);padding:2px 7px;border-radius:20px;">⏳ Pendente</span></td>`;
+          const pct=(n/maxImp*100).toFixed(1);
+          return`<td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:${s.color};"></div></div><span class="bar-v">${fmtOrgNum(v)}</span></div></td>`;
+        }
+        return`<td>${fmtOrgNum(v)}</td>`;
+      }).join('')}</tr>`;
+    }).join('');
+    return;
+  }
+
+  // Formato antigo — mostra primeiras 4 colunas
+  const headers=h.slice(0,4);
   const data=rows.slice(1).filter(r=>r.some(c=>c));
   if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
   if($('org-tbl-total'))$('org-tbl-total').textContent=`${data.length} linhas`;
@@ -964,7 +1011,7 @@ function showOrgSheet(id){
   const maxImp=Math.max(...data.map(r=>parseOrgNum(r[idxImp]||'')),1);
   $('org-head').innerHTML=`<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
   $('org-body').innerHTML=data.map(r=>{
-    const row4=r.slice(0,4); // garante apenas 4 colunas
+    const row4=r.slice(0,4);
     const isTotal=/total/i.test(row4[0]||'');
     const style=isTotal?'background:var(--bg2);font-weight:700;border-top:2px solid var(--border);':'';
     const cells=headers.map((_,i)=>{
