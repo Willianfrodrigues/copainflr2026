@@ -1086,8 +1086,8 @@ function startApp(){
     $('ds').value=mStart();
     $('de').value=today();
     // 1. Busca config do backend
-    loadConfig().then(()=>{
-      renderCampHeader();
+    loadConfig().then((cfgData)=>{
+      renderCampHeader(_campConfigCache);
       loadData();
     }).catch(()=>{
       renderCampHeader();
@@ -1111,8 +1111,8 @@ function userExcludesCamp(campName){
   return excl.some(e=>(campName||'').toUpperCase().includes(e));
 }
 
-function renderCampHeader(){
-  const cfg=getCampConfig();
+function renderCampHeader(cfg){
+  if(!cfg) cfg=getCampConfig();
   const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
   const _ok=kw=>{if(!_uKws.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
   const active=cfg.filter(c=>c.kw&&_ok(c.kw)&&!userExcludesCamp(c.kw));
