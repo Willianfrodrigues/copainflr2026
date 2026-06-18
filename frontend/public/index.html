@@ -958,29 +958,39 @@ function showOrgSheet(id){
   const rows=_orgData[id];
   if(!rows||!s){$('org-head').innerHTML='';$('org-body').innerHTML='';return;}
 
-  // Detecta formato da planilha — nova (Stories, Orgânico, Postagem, Impressões, Alcance, Cliques)
-  const h=rows[0];
-  const iStories = h.findIndex(x=>/stories/i.test(x));
-  const iOrg     = h.findIndex(x=>/org[âa]nico/i.test(x));
-  const iPost    = h.findIndex(x=>/postagem/i.test(x));
-  const iImp     = h.findIndex(x=>/impress/i.test(x));
-  const iAlc     = h.findIndex(x=>/alcance/i.test(x));
-  const iClk     = h.findIndex(x=>/clique/i.test(x));
+  // Detecta formato da planilha — nova (Stories, Orgânico, Postagem, Impressões, Alcance, Cliques no Link)
+  // O cabeçalho pode estar em qualquer uma das primeiras 6 linhas (linha 3 ou 4 no novo formato)
+  let hRowIdx=0, iStories=-1, iOrg=-1, iPost=-1, iImp=-1, iAlc=-1, iClk=-1;
+  for(let ri=0; ri<Math.min(6,rows.length); ri++){
+    const candidate=rows[ri];
+    const tS=candidate.findIndex(x=>/stories/i.test(x));
+    const tO=candidate.findIndex(x=>/org[âa]nico/i.test(x));
+    const tI=candidate.findIndex(x=>/impress/i.test(x));
+    if(tS>=0 && tO>=0 && tI>=0){
+      hRowIdx=ri; iStories=tS; iOrg=tO; iImp=tI;
+      iPost=candidate.findIndex(x=>/postagem/i.test(x));
+      iAlc=candidate.findIndex(x=>/alcance/i.test(x));
+      iClk=candidate.findIndex(x=>/clique/i.test(x));
+      break;
+    }
+  }
+  const h=rows[hRowIdx]||rows[0];
 
   const isNewFormat = iStories>=0 && iOrg>=0 && iImp>=0;
 
   if(isNewFormat){
-    // Novo formato: Stories | Orgânico | Postagem | Impressões | Alcance | Cliques
+    // Novo formato: Stories | Orgânico | Postagem | Impressões | Alcance | Cliques no Link
     const cols = [
-      {label:'Stories',    idx:iStories},
-      {label:'Orgânico',   idx:iOrg},
-      {label:'Postagem',   idx:iPost>=0?iPost:-1},
-      {label:'Impressões', idx:iImp},
-      {label:'Alcance',    idx:iAlc>=0?iAlc:-1},
-      {label:'Cliques',    idx:iClk>=0?iClk:-1},
+      {label:'Stories',         idx:iStories},
+      {label:'Orgânico',        idx:iOrg},
+      {label:'Postagem',        idx:iPost>=0?iPost:-1},
+      {label:'Impressões',      idx:iImp},
+      {label:'Alcance',         idx:iAlc>=0?iAlc:-1},
+      {label:'Cliques no Link', idx:iClk>=0?iClk:-1},
     ].filter(c=>c.idx>=0);
 
-    const data=rows.slice(1).filter(r=>r.some(c=>c)&&r[iOrg]?.trim()&&!/total/i.test(r[iOrg]));
+    // Filtra linhas de dados: a partir da linha após o cabeçalho, com Orgânico preenchido, sem "total"
+    const data=rows.slice(hRowIdx+1).filter(r=>r.some(c=>c)&&r[iOrg]?.trim()&&!/total/i.test(r[iOrg]));
     const maxImp=Math.max(...data.map(r=>parseOrgNum(r[iImp]||'')),1);
 
     if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
@@ -1104,9 +1114,25 @@ async function apiFetch(path,opts={}){
   }catch(e){console.error('apiFetch',path,e.message);return null;}
 }
 
+function userCanSeeCamp(campKw){
+  // Admin vê tudo. Usuário sem campanhas configuradas vê tudo.
+  if(!USER || USER.role==='admin') return true;
+  const userKws = (USER.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  if(!userKws.length) return true; // sem restrição = vê todas
+  if(!campKw) return false;
+  const ckw = campKw.trim().toUpperCase();
+  // Cada entrada do usuário é OR (vírgula). Dentro de cada entrada pode ter AND (+).
+  return userKws.some(uk=>{
+    if(uk.includes('+')){
+      return uk.split('+').map(s=>s.trim()).every(part=>ckw.includes(part));
+    }
+    return ckw.includes(uk) || uk.includes(ckw);
+  });
+}
+
 function renderCampHeader(){
   const cfg=getCampConfig();
-  const active=cfg.filter(c=>c.kw);
+  const active=cfg.filter(c=>c.kw && userCanSeeCamp(c.kw));
   const el=$('camp-header');
   if(!active.length){
     el.setAttribute('style','display:block');
@@ -1115,7 +1141,7 @@ function renderCampHeader(){
   }
   el.setAttribute('style',`display:grid;grid-template-columns:repeat(${active.length},1fr);gap:14px;margin-bottom:24px;`);
   el.innerHTML=cfg.map((c,i)=>{
-    if(!c.kw) return '';
+    if(!c.kw || !userCanSeeCamp(c.kw)) return '';
     return `<div class="camp-slot" style="--slot-color:${CAMP_COLORS[i]}">
       <div class="camp-slot-num">Campanha ${i+1}</div>
       <div class="camp-slot-name">${c.nome||'—'}</div>
