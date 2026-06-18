@@ -26,7 +26,8 @@ class handler(BaseHTTPRequestHandler):
                     "username":  user["username"],
                     "role":      user["role"],
                     "client":    user["client"],
-                    "campaigns": user["campaigns"]
+                    "campaigns": user["campaigns"],
+                    "exclude":   user.get("exclude", [])
                 })
 
             self.send_response(resp["statusCode"])
