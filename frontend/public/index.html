@@ -718,7 +718,8 @@ async function loadOrganico(silent=false){
     renderOrgCards();
     renderOrgPodium();
     renderOrgSubTabs();
-    showOrgSheet('all');
+    const _sheets=getAllSheets().filter(s=>_orgData[s.id]);
+    showOrgSheet(_sheets.length===1?_sheets[0].id:'all');
   }finally{if(!silent) loading(false);}
 }
 
@@ -893,8 +894,8 @@ function renderOrgPodium(){
 function renderOrgSubTabs(){
   const tabs=getAllSheets().filter(s=>_orgData[s.id]&&s.id!=='geral');
   $('org-subtabs').style.display=tabs.length?'flex':'none';
-  // "Todas" unificada + abas individuais
-  const allBtn=`<button class="tab org-subtab" id="orgtab-all" onclick="showOrgSheet('all')" style="border-top:2px solid #F5C842;">🔀 Todas as Campanhas</button>`;
+  // "Todas" só aparece se tiver 2+ planilhas
+  const allBtn=tabs.length>=2?`<button class="tab org-subtab" id="orgtab-all" onclick="showOrgSheet('all')" style="border-top:2px solid #F5C842;">🔀 Todas as Campanhas</button>`:'';
   $('org-subtabs').innerHTML=allBtn+tabs.map(s=>`<button class="tab org-subtab" id="orgtab-${s.id}" onclick="showOrgSheet('${s.id}')" style="border-top:2px solid ${s.color};">${s.icon} ${s.label}</button>`).join('');
 }
 
