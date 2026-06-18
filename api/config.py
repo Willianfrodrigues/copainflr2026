@@ -21,7 +21,7 @@ def get_config():
     ensure_config_table()
     conn = get_db()
     cur  = conn.cursor()
-    cur.execute("SELECT key, value FROM app_config WHERE key IN ('camps', 'sheets_url', 'sheets_urls')")
+    cur.execute("SELECT key, value FROM app_config WHERE key IN ('camps', 'sheets_url', 'sheets_urls', 'access_sheets')")
     rows = {r[0]: r[1] for r in cur.fetchall()}
     cur.close(); conn.close()
     camps = json.loads(rows.get('camps', 'null'))
@@ -32,9 +32,10 @@ def get_config():
             {"nome": "Campanha 3", "kw": "", "click": "clicks"},
         ]
     sheets_urls = json.loads(rows.get('sheets_urls', '{}')) if rows.get('sheets_urls') else {}
-    return {"camps": camps, "sheets_url": rows.get('sheets_url', ''), "sheets_urls": sheets_urls}
+    access_sheets = json.loads(rows.get('access_sheets', '[]')) if rows.get('access_sheets') else []
+    return {"camps": camps, "sheets_url": rows.get('sheets_url', ''), "sheets_urls": sheets_urls, "access_sheets": access_sheets}
 
-def save_config(camps, sheets_url, sheets_urls=None):
+def save_config(camps, sheets_url, sheets_urls=None, access_sheets=None):
     ensure_config_table()
     conn = get_db()
     cur  = conn.cursor()
@@ -51,6 +52,11 @@ def save_config(camps, sheets_url, sheets_urls=None):
             INSERT INTO app_config (key, value) VALUES ('sheets_urls', %s)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
         """, (json.dumps(sheets_urls),))
+    if access_sheets is not None:
+        cur.execute("""
+            INSERT INTO app_config (key, value) VALUES ('access_sheets', %s)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, (json.dumps(access_sheets),))
     conn.commit()
     cur.close(); conn.close()
 
@@ -88,14 +94,15 @@ class handler(BaseHTTPRequestHandler):
             body   = json.loads(self.rfile.read(length))
 
             camps       = body.get("camps", [])
-            sheets_url  = body.get("sheets_url", "")
-            sheets_urls = body.get("sheets_urls", {})
+            sheets_url    = body.get("sheets_url", "")
+            sheets_urls   = body.get("sheets_urls", {})
+            access_sheets = body.get("access_sheets", None)
 
             # Valida estrutura básica das campanhas
             if not isinstance(camps, list) or len(camps) != 3:
                 return self._send(error_response("camps deve ser uma lista com 3 itens.", 400))
 
-            save_config(camps, sheets_url, sheets_urls)
+            save_config(camps, sheets_url, sheets_urls, access_sheets)
             self._send(json_response({"ok": True}))
         except (PermissionError, jwt.ExpiredSignatureError) as e:
             self._send(error_response(str(e), 401))
