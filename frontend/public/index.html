@@ -736,8 +736,27 @@ function fmtOrgNum(v){
   return v;
 }
 function parseOrgNum(v){
-  if(!v||v==='-'||v.toLowerCase()==='pendente') return 0;
-  return parseFloat(v.replace(/\./g,'').replace(',','.').replace(/[^\d.]/g,''))||0;
+  if(!v||v==='-') return 0;
+  const s = String(v).trim().toLowerCase();
+  if(s==='pendente'||s==='') return 0;
+  // Suporte a sufixos M e K vindos da planilha
+  if(s.endsWith('m')){
+    return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.')) * 1_000_000;
+  }
+  if(s.endsWith('k')){
+    return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.')) * 1_000;
+  }
+  // Formato brasileiro: 1.234.567 ou 1.234,56
+  // Se tem vírgula depois de ponto → formato BR (ponto = milhar, vírgula = decimal)
+  if(/\d\.\d{3}/.test(s) && s.includes(',')){
+    return parseFloat(s.replace(/\./g,'').replace(',','.')) || 0;
+  }
+  // Só ponto como milhar (sem vírgula): 1.234.567
+  if(/\d\.\d{3}/.test(s) && !s.includes(',')){
+    return parseFloat(s.replace(/\./g,'')) || 0;
+  }
+  // Fallback
+  return parseFloat(s.replace(',','.').replace(/[^\d.]/g,'')) || 0;
 }
 
 function getSheetTotals(rows){
