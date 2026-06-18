@@ -373,10 +373,11 @@ tbody td{padding:11px 15px;font-size:13px;}
           <div class="af"><label>Usuário</label><input id="nu" placeholder="ex: interno01"></div>
           <div class="af"><label>Senha</label><input type="password" id="np" placeholder="senha segura"></div>
           <div class="af"><label>Nome</label><input id="nc" placeholder="ex: Time Copa"></div>
-          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET, COPA"><div class="hint">Separe por vírgula. Vazio = vê todas as campanhas configuradas.</div></div>
+          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET, COPA"><div class="hint">Separe por vírgula. Vazio = vê todas.</div></div>
+          <div class="af"><label>Excluir (palavras-chave)</label><input id="nexclude" placeholder="ex: INFLR, AWARENESS"><div class="hint">Campanhas com estas palavras ficam ocultas.</div></div>
           <button class="btn-g" onclick="adminAdd()" style="height:38px;">+ Adicionar</button>
         </div>
-        <table><thead><tr><th>Usuário</th><th>Nome</th><th>Palavras-chave</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
+        <table><thead><tr><th>Usuário</th><th>Nome</th><th>Acesso</th><th>Excluir</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
       </div><!-- fim adm-section usuarios -->
     </div><!-- fim admin-panel -->
 
@@ -494,6 +495,19 @@ tbody td{padding:11px 15px;font-size:13px;}
   </div>
 
 </div>
+<!-- MODAL EDITAR USUÁRIO -->
+<div id="edit-user-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:28px;width:480px;max-width:95vw;box-shadow:var(--shadow-lg);">
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;margin-bottom:20px;color:var(--gold);">✏️ Editar Usuário: <span id="edit-user-name"></span></div>
+    <div class="cfg-field"><label>Acesso (palavras-chave)</label><input id="edit-campaigns" placeholder="ex: REDE, BRA BET — vazio = vê todas"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Separe por vírgula.</div></div>
+    <div class="cfg-field" style="margin-top:12px;"><label>Excluir (palavras-chave)</label><input id="edit-exclude" placeholder="ex: INFLR, AWARENESS"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Campanhas com estas palavras ficam ocultas para o usuário.</div></div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
+      <button class="btn-outline" onclick="closeEditModal()">Cancelar</button>
+      <button class="btn-gold" onclick="saveEditUser()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API='';
 let USER=null,TOKEN=null,allCRows=[],allInflRows=[],CH={};
@@ -851,21 +865,15 @@ function renderOrgPodium(){
   const ranking={};
   getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
     const rows=_orgData[s.id];if(!rows)return;
-    let hIdx=0,iI=-1,iM=-1;
-    for(let ri=0;ri<Math.min(6,rows.length);ri++){
-      const cand=rows[ri];
-      const tInfl=cand.findIndex(x=>/influenc/i.test(x));
-      const tOrg=cand.findIndex(x=>/org[âa]nico/i.test(x));
-      const tImp=cand.findIndex(x=>/impress/i.test(x));
-      if(tImp>=0&&(tInfl>=0||tOrg>=0)){hIdx=ri;iI=tInfl>=0?tInfl:tOrg;iM=tImp;break;}
-    }
+    const h=rows[0];
+    const iI=h.findIndex(x=>/influenc/i.test(x));
+    const iM=h.findIndex(x=>/impress/i.test(x));
     if(iI<0||iM<0)return;
-    const allRows=rows.slice(hIdx+1);
-    const stopIdx=allRows.findIndex(r=>{const a=(r[0]||'').trim(),b=(r[iI]||'').trim();return a&&!b&&/posts?|stories|amplif|over.?delivery|total.?geral/i.test(a);});
-    (stopIdx>=0?allRows.slice(0,stopIdx):allRows).filter(r=>r.some(c=>c)).forEach(r=>{
+    rows.slice(1).filter(r=>r.some(c=>c)).forEach(r=>{
       const name=(r[iI]||'').trim();
-      if(!name||/^total/i.test(name))return;
-      ranking[name]=(ranking[name]||0)+parseOrgNum(r[iM]);
+      if(!name||/total/i.test(name))return;
+      const imp=parseOrgNum(r[iM]);
+      ranking[name]=(ranking[name]||0)+imp;
     });
   });
   const sorted=Object.entries(ranking).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -964,27 +972,29 @@ function showOrgSheet(id){
   const rows=_orgData[id];
   if(!rows||!s){$('org-head').innerHTML='';$('org-body').innerHTML='';return;}
 
-  // Detecta formato — cabeçalho pode estar em qualquer uma das primeiras 6 linhas
-  let hRowIdx=0,iStories=-1,iOrg=-1,iPost=-1,iImp=-1,iAlc=-1,iClk=-1;
-  for(let ri=0;ri<Math.min(6,rows.length);ri++){
-    const cand=rows[ri];
-    const tS=cand.findIndex(x=>/stories/i.test(x));
-    const tO=cand.findIndex(x=>/org[âa]nico/i.test(x));
-    const tI=cand.findIndex(x=>/impress/i.test(x));
-    if(tS>=0&&tO>=0&&tI>=0){hRowIdx=ri;iStories=tS;iOrg=tO;iImp=tI;iPost=cand.findIndex(x=>/postagem/i.test(x));iAlc=cand.findIndex(x=>/alcance/i.test(x));iClk=cand.findIndex(x=>/clique/i.test(x));break;}
-  }
-  const h=rows[hRowIdx]||rows[0];
-  const isNewFormat=iStories>=0&&iOrg>=0&&iImp>=0;
+  // Detecta formato da planilha — nova (Stories, Orgânico, Postagem, Impressões, Alcance, Cliques)
+  const h=rows[0];
+  const iStories = h.findIndex(x=>/stories/i.test(x));
+  const iOrg     = h.findIndex(x=>/org[âa]nico/i.test(x));
+  const iPost    = h.findIndex(x=>/postagem/i.test(x));
+  const iImp     = h.findIndex(x=>/impress/i.test(x));
+  const iAlc     = h.findIndex(x=>/alcance/i.test(x));
+  const iClk     = h.findIndex(x=>/clique/i.test(x));
+
+  const isNewFormat = iStories>=0 && iOrg>=0 && iImp>=0;
 
   if(isNewFormat){
-    const cols=[
-      {label:'Stories',idx:iStories},{label:'Orgânico',idx:iOrg},
-      {label:'Postagem',idx:iPost>=0?iPost:-1},{label:'Impressões',idx:iImp},
-      {label:'Alcance',idx:iAlc>=0?iAlc:-1},{label:'Cliques no Link',idx:iClk>=0?iClk:-1},
+    // Novo formato: Stories | Orgânico | Postagem | Impressões | Alcance | Cliques
+    const cols = [
+      {label:'Stories',    idx:iStories},
+      {label:'Orgânico',   idx:iOrg},
+      {label:'Postagem',   idx:iPost>=0?iPost:-1},
+      {label:'Impressões', idx:iImp},
+      {label:'Alcance',    idx:iAlc>=0?iAlc:-1},
+      {label:'Cliques',    idx:iClk>=0?iClk:-1},
     ].filter(c=>c.idx>=0);
-    const allDataRows=rows.slice(hRowIdx+1);
-    const dataStopIdx=allDataRows.findIndex(r=>{const a=(r[0]||'').trim(),b=(r[iOrg]||'').trim();return a&&!b&&/posts?|stories|amplif|over.?delivery|total.?geral/i.test(a);});
-    const data=(dataStopIdx>=0?allDataRows.slice(0,dataStopIdx):allDataRows).filter(r=>r.some(c=>c)&&r[iOrg]?.trim()&&!/total/i.test(r[iOrg]));
+
+    const data=rows.slice(1).filter(r=>r.some(c=>c)&&r[iOrg]?.trim()&&!/total/i.test(r[iOrg]));
     const maxImp=Math.max(...data.map(r=>parseOrgNum(r[iImp]||'')),1);
 
     if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
@@ -1006,11 +1016,9 @@ function showOrgSheet(id){
     return;
   }
 
-  // Formato antigo — para antes de Over delivery / TOTAL GERAL
+  // Formato antigo — mostra primeiras 4 colunas
   const headers=h.slice(0,4);
-  const allOldRows=rows.slice(1).filter(r=>r.some(c=>c));
-  const oldStop=allOldRows.findIndex(r=>/over.?delivery|total.?geral/i.test((r[0]||'').trim()));
-  const data=oldStop>=0?allOldRows.slice(0,oldStop):allOldRows;
+  const data=rows.slice(1).filter(r=>r.some(c=>c));
   if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
   if($('org-tbl-total'))$('org-tbl-total').textContent=`${data.length} linhas`;
   const idxImp=headers.findIndex(h=>/impress/i.test(h));
@@ -1110,16 +1118,16 @@ async function apiFetch(path,opts={}){
   }catch(e){console.error('apiFetch',path,e.message);return null;}
 }
 
+function userExcludesCamp(campName){
+  const excl=(USER?.exclude||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  if(!excl.length) return false;
+  const cn=(campName||'').toUpperCase();
+  return excl.some(e=>cn.includes(e));
+}
+
 function renderCampHeader(){
   const cfg=getCampConfig();
-  // Filtra campanhas que o usuário tem acesso (baseado nas palavras-chave do token)
-  const userKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
-  const active=cfg.filter(c=>{
-    if(!c.kw) return false;
-    if(!userKws.length || USER?.role==='admin') return true;
-    const ckw=c.kw.trim().toUpperCase();
-    return userKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ckw.includes(p)):ckw.includes(uk)||uk.includes(ckw));
-  });
+  const active=cfg.filter(c=>c.kw);
   const el=$('camp-header');
   if(!active.length){
     el.setAttribute('style','display:block');
@@ -1129,9 +1137,7 @@ function renderCampHeader(){
   el.setAttribute('style',`display:grid;grid-template-columns:repeat(${active.length},1fr);gap:14px;margin-bottom:24px;`);
   el.innerHTML=cfg.map((c,i)=>{
     if(!c.kw) return '';
-    const ckw=c.kw.trim().toUpperCase();
-    const visible=!userKws.length||USER?.role==='admin'||userKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ckw.includes(p)):ckw.includes(uk)||uk.includes(ckw));
-    if(!visible) return '';
+    if(userExcludesCamp(c.kw)) return '';
     return `<div class="camp-slot" style="--slot-color:${CAMP_COLORS[i]}">
       <div class="camp-slot-num">Campanha ${i+1}</div>
       <div class="camp-slot-name">${c.nome||'—'}</div>
@@ -1196,7 +1202,7 @@ function renderCharts(rows){ /* gráficos removidos */ }
 function destroyCharts(){Object.values(CH).forEach(c=>c&&c.destroy());CH={};}
 
 function renderCampTable(rows){
-  const filtered = rows.filter(r=>(r.impressions||0)>0);
+  const filtered = rows.filter(r=>(r.impressions||0)>0 && !userExcludesCamp(r.CAMPAIGN_NAME));
   if(!filtered.length){$('c-tbody').innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ico">📋</div><h3>Nenhuma campanha no período</h3></div></td></tr>`;return;}
   const mI=Math.max(...filtered.map(r=>r.impressions||0),1);
   const mC=Math.max(...filtered.map(r=>r.clicks||0),1);
@@ -1211,12 +1217,9 @@ function renderCampTable(rows){
 
 function renderComparativo(rows,kpi){
   const cfg=getCampConfig();
-  const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
-  const _canSee=ckw=>!_uKws.length||USER?.role==='admin'||_uKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ckw.includes(p)):ckw.includes(uk)||uk.includes(ckw));
   // Agrupa por campanha configurada
   const cards=cfg.map((c,i)=>{
-    if(!c.kw)return null;
-    if(!_canSee(c.kw.trim().toUpperCase()))return null;
+    if(!c.kw)return null; // pula não configuradas
     const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));
     const imp=campRows.reduce((a,r)=>a+(r.impressions||0),0);
     const clk=campRows.reduce((a,r)=>a+(r[c.click]||0),0);
@@ -1450,7 +1453,17 @@ function switchTab(name,el){
 async function loadAdminUsers(){
   const data=await apiFetch('/api/users');if(!data)return;
   _allUsers = data;
-  $('adm-tbody').innerHTML=data.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.client||'—'}</td><td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td><td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td><td>${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td></tr>`).join('');
+  $('adm-tbody').innerHTML=data.map(u=>`<tr>
+    <td><strong>${u.username}</strong></td>
+    <td>${u.client||'—'}</td>
+    <td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td>
+    <td style="font-size:12px;color:#F05A5A;font-family:monospace;">${(u.exclude||[]).join(', ')||'—'}</td>
+    <td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td>
+    <td style="display:flex;gap:6px;">
+      ${u.role!=='admin'?`<button class="btn-g" style="padding:4px 10px;font-size:12px;" onclick="openEditModal('${u.username}','${(u.campaigns||[]).join(',')}','${(u.exclude||[]).join(',')}')">✏️</button>`:''}
+      ${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}
+    </td>
+  </tr>`).join('');
   // Load access sheets config
   const cfg = await apiFetch('/api/config');
   if(cfg?.access_sheets?.length){
@@ -1470,12 +1483,32 @@ async function loadAdminUsers(){
   renderAccessSheetsList();
 }
 async function adminAdd(){
-  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim();
+  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim(),exRaw=$('nexclude').value.trim();
   if(!username||!password)return toast('Preencha usuário e senha.','red');
   const campaigns=kRaw.split(',').map(s=>s.trim()).filter(Boolean);
-  const res=await apiFetch('/api/users',{method:'POST',body:JSON.stringify({username,password,client,campaigns})});
-  if(res?.ok){['nu','np','nc','nk'].forEach(id=>$(id).value='');toast('Usuário criado!');loadAdminUsers();}
+  const exclude=exRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  const res=await apiFetch('/api/users',{method:'POST',body:JSON.stringify({username,password,client,campaigns,exclude})});
+  if(res?.ok){['nu','np','nc','nk','nexclude'].forEach(id=>$(id).value='');toast('Usuário criado!');loadAdminUsers();}
   else toast(res?.error||'Erro ao criar.','red');
+}
+let _editUsername='';
+function openEditModal(username, campaigns, exclude){
+  _editUsername=username;
+  $('edit-user-name').textContent=username;
+  $('edit-campaigns').value=campaigns||'';
+  $('edit-exclude').value=exclude||'';
+  $('edit-user-modal').style.display='flex';
+}
+function closeEditModal(){
+  $('edit-user-modal').style.display='none';
+  _editUsername='';
+}
+async function saveEditUser(){
+  const campaigns=$('edit-campaigns').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const exclude=$('edit-exclude').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  const res=await apiFetch('/api/users',{method:'PUT',body:JSON.stringify({username:_editUsername,campaigns,exclude})});
+  if(res?.ok){closeEditModal();toast('Usuário atualizado!');loadAdminUsers();}
+  else toast(res?.error||'Erro ao salvar.','red');
 }
 async function adminDel(username){
   if(!confirm(`Remover "${username}"?`))return;
