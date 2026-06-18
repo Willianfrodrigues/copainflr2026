@@ -369,12 +369,12 @@ tbody td{padding:11px 15px;font-size:13px;}
       <!-- USUÁRIOS -->
       <div class="adm-section">
         <div class="adm-section-ttl">👥 Usuários</div>
-        <div class="adm-form">
+        <div class="adm-form" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;">
           <div class="af"><label>Usuário</label><input id="nu" placeholder="ex: interno01"></div>
           <div class="af"><label>Senha</label><input type="password" id="np" placeholder="senha segura"></div>
           <div class="af"><label>Nome</label><input id="nc" placeholder="ex: Time Copa"></div>
-          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET, COPA"><div class="hint">Separe por vírgula. Vazio = vê todas.</div></div>
-          <div class="af"><label>Excluir (palavras-chave)</label><input id="nexclude" placeholder="ex: INFLR, AWARENESS"><div class="hint">Campanhas com estas palavras ficam ocultas.</div></div>
+          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET"><div class="hint">Vazio = vê todas.</div></div>
+          <div class="af"><label>Excluir (palavras-chave)</label><input id="nexclude" placeholder="ex: INFLR, AWARENESS"><div class="hint">Oculta campanhas com estas palavras.</div></div>
           <button class="btn-g" onclick="adminAdd()" style="height:38px;">+ Adicionar</button>
         </div>
         <table><thead><tr><th>Usuário</th><th>Nome</th><th>Acesso</th><th>Excluir</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
@@ -495,19 +495,6 @@ tbody td{padding:11px 15px;font-size:13px;}
   </div>
 
 </div>
-<!-- MODAL EDITAR USUÁRIO -->
-<div id="edit-user-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9000;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:28px;width:480px;max-width:95vw;box-shadow:var(--shadow-lg);">
-    <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;margin-bottom:20px;color:var(--gold);">✏️ Editar Usuário: <span id="edit-user-name"></span></div>
-    <div class="cfg-field"><label>Acesso (palavras-chave)</label><input id="edit-campaigns" placeholder="ex: REDE, BRA BET — vazio = vê todas"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Separe por vírgula.</div></div>
-    <div class="cfg-field" style="margin-top:12px;"><label>Excluir (palavras-chave)</label><input id="edit-exclude" placeholder="ex: INFLR, AWARENESS"><div style="font-size:11px;color:var(--muted);margin-top:3px;">Campanhas com estas palavras ficam ocultas para o usuário.</div></div>
-    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
-      <button class="btn-outline" onclick="closeEditModal()">Cancelar</button>
-      <button class="btn-gold" onclick="saveEditUser()">💾 Salvar</button>
-    </div>
-  </div>
-</div>
-
 <script>
 const API='';
 let USER=null,TOKEN=null,allCRows=[],allInflRows=[],CH={};
@@ -1121,8 +1108,7 @@ async function apiFetch(path,opts={}){
 function userExcludesCamp(campName){
   const excl=(USER?.exclude||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
   if(!excl.length) return false;
-  const cn=(campName||'').toUpperCase();
-  return excl.some(e=>cn.includes(e));
+  return excl.some(e=>(campName||'').toUpperCase().includes(e));
 }
 
 function renderCampHeader(){
@@ -1453,17 +1439,7 @@ function switchTab(name,el){
 async function loadAdminUsers(){
   const data=await apiFetch('/api/users');if(!data)return;
   _allUsers = data;
-  $('adm-tbody').innerHTML=data.map(u=>`<tr>
-    <td><strong>${u.username}</strong></td>
-    <td>${u.client||'—'}</td>
-    <td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td>
-    <td style="font-size:12px;color:#F05A5A;font-family:monospace;">${(u.exclude||[]).join(', ')||'—'}</td>
-    <td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td>
-    <td style="display:flex;gap:6px;">
-      ${u.role!=='admin'?`<button class="btn-g" style="padding:4px 10px;font-size:12px;" onclick="openEditModal('${u.username}','${(u.campaigns||[]).join(',')}','${(u.exclude||[]).join(',')}')">✏️</button>`:''}
-      ${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}
-    </td>
-  </tr>`).join('');
+  $('adm-tbody').innerHTML=data.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.client||'—'}</td><td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td><td style="font-size:12px;color:#F05A5A;font-family:monospace;">${(u.exclude||[]).join(', ')||'—'}</td><td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td><td>${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td></tr>`).join('');
   // Load access sheets config
   const cfg = await apiFetch('/api/config');
   if(cfg?.access_sheets?.length){
@@ -1483,32 +1459,13 @@ async function loadAdminUsers(){
   renderAccessSheetsList();
 }
 async function adminAdd(){
-  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim(),exRaw=$('nexclude').value.trim();
+  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim(),exRaw=($('nexclude')?.value||'').trim();
   if(!username||!password)return toast('Preencha usuário e senha.','red');
   const campaigns=kRaw.split(',').map(s=>s.trim()).filter(Boolean);
   const exclude=exRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
   const res=await apiFetch('/api/users',{method:'POST',body:JSON.stringify({username,password,client,campaigns,exclude})});
-  if(res?.ok){['nu','np','nc','nk','nexclude'].forEach(id=>$(id).value='');toast('Usuário criado!');loadAdminUsers();}
+  if(res?.ok){['nu','np','nc','nk','nexclude'].forEach(id=>{if($(id))$(id).value='';});toast('Usuário criado!');loadAdminUsers();}
   else toast(res?.error||'Erro ao criar.','red');
-}
-let _editUsername='';
-function openEditModal(username, campaigns, exclude){
-  _editUsername=username;
-  $('edit-user-name').textContent=username;
-  $('edit-campaigns').value=campaigns||'';
-  $('edit-exclude').value=exclude||'';
-  $('edit-user-modal').style.display='flex';
-}
-function closeEditModal(){
-  $('edit-user-modal').style.display='none';
-  _editUsername='';
-}
-async function saveEditUser(){
-  const campaigns=$('edit-campaigns').value.split(',').map(s=>s.trim()).filter(Boolean);
-  const exclude=$('edit-exclude').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
-  const res=await apiFetch('/api/users',{method:'PUT',body:JSON.stringify({username:_editUsername,campaigns,exclude})});
-  if(res?.ok){closeEditModal();toast('Usuário atualizado!');loadAdminUsers();}
-  else toast(res?.error||'Erro ao salvar.','red');
 }
 async function adminDel(username){
   if(!confirm(`Remover "${username}"?`))return;
