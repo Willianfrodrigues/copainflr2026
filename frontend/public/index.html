@@ -1212,6 +1212,7 @@ function renderComparativo(rows,kpi){
   // Agrupa por campanha configurada
   const cards=cfg.map((c,i)=>{
     if(!c.kw)return null; // pula não configuradas
+    if(!userCanSeeCamp(c.kw))return null; // pula sem acesso
     const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));
     const imp=campRows.reduce((a,r)=>a+(r.impressions||0),0);
     const clk=campRows.reduce((a,r)=>a+(r[c.click]||0),0);
