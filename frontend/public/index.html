@@ -357,25 +357,13 @@ tbody td{padding:11px 15px;font-size:13px;}
         </div>
       </div>
 
-      <!-- ORGÂNICO CONFIG -->
-      <div class="adm-section">
-        <div class="adm-section-ttl">📊 Dados Orgânicos (Google Sheets)</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Publique cada aba: <strong style="color:var(--gold);">Arquivo → Compartilhar → Publicar na Web → selecione a aba → CSV → Publicar</strong>. Cole cada URL abaixo.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-          <div class="cfg-field"><label>🚗 Aba: Florida Rental Car</label><input id="sheets-url-florida" placeholder="...pub?gid=XXXX&output=csv"></div>
-          <div class="cfg-field"><label>🎰 Aba: BRA.BET</label><input id="sheets-url-bra" placeholder="...pub?gid=XXXX&output=csv"></div>
-          <div class="cfg-field"><label>⚽ Aba: Rede Ronaldo (RR)</label><input id="sheets-url-rr" placeholder="...pub?gid=XXXX&output=csv"></div>
-        </div>
-        <button class="btn-gold" onclick="saveAndTestSheets()">💾 Salvar URLs</button>
-        <div class="organico-note" style="margin-top:8px;">⚠️ Deixe em branco as abas que ainda não estão prontas.</div>
-      </div>
-
       <!-- PLANILHAS COM CONTROLE DE ACESSO -->
       <div class="adm-section">
-        <div class="adm-section-ttl">📋 Planilhas com Controle de Acesso</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Configure as planilhas e defina quais usuários podem visualizar cada uma.</div>
+        <div class="adm-section-ttl">📊 Dados Orgânicos (Google Sheets)</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Publique cada aba: <strong style="color:var(--gold);">Arquivo → Compartilhar → Publicar na Web → selecione a aba → CSV → Publicar</strong>. Cole cada URL e defina quem pode ver.</div>
         <div id="access-sheets-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px;"></div>
         <button class="btn-gold" onclick="saveAccessSheets()">💾 Salvar Planilhas</button>
+        <div class="organico-note" style="margin-top:8px;">⚠️ Deixe em branco as abas que ainda não estão prontas.</div>
       </div>
 
       <!-- USUÁRIOS -->
@@ -574,9 +562,6 @@ async function loadCampConfigToForm(){
   });
   // Load 4 sheets URLs
   const su = data.sheets_urls||{};
-  if($('sheets-url-florida'))$('sheets-url-florida').value= su.florida||'';
-  if($('sheets-url-bra'))    $('sheets-url-bra').value    = su.bra||'';
-  if($('sheets-url-rr'))     $('sheets-url-rr').value     = su.rr||'';
 
   // Avisa admin se a config ainda não foi salva no servidor
   const savedOnServer = cfg.some(c=>c.kw && c.kw.trim());
@@ -625,9 +610,6 @@ async function saveAndTestSheets(){
     {nome:$('c3-nome').value.trim(),kw:$('c3-kw').value.trim().toUpperCase(),click:$('c3-click').value},
   ];
   const sheets_urls={
-    florida: $('sheets-url-florida')?.value.trim()||'',
-    bra:     $('sheets-url-bra')?.value.trim()||'',
-    rr:      $('sheets-url-rr')?.value.trim()||'',
   };
   const res=await apiFetch('/api/config',{method:'POST',body:JSON.stringify({camps:cfg,sheets_url:sheets_urls.geral,sheets_urls})});
   if(res&&res.ok){_campConfigCache=cfg;toast('URLs salvas!');}
@@ -643,9 +625,12 @@ function renderAccessSheetsList(){
   if(!el) return;
   if(!_accessSheets.length){
     _accessSheets = [
-      {nome:'Rede Ronaldo',    url:'', users:[]},
       {nome:'Florida Rental Car', url:'', users:[]},
-      {nome:'BRABET',          url:'', users:[]},
+      {nome:'BRA.BET',            url:'', users:[]},
+      {nome:'Rede Ronaldo (RR)',  url:'', users:[]},
+      {nome:'Rede Ronaldo',       url:'', users:[]},
+      {nome:'Florida Rental Car', url:'', users:[]},
+      {nome:'BRABET',             url:'', users:[]},
     ];
   }
   el.innerHTML = _accessSheets.map((s,i)=>`
@@ -688,16 +673,15 @@ function removeAccessSheet(idx){
 }
 
 async function saveAccessSheets(){
-  // Coleta valores dos inputs
   _accessSheets = _accessSheets.map((s,i)=>({
     nome:  $(`as-nome-${i}`)?.value.trim()||s.nome,
     url:   $(`as-url-${i}`)?.value.trim()||s.url,
     users: s.users,
   }));
   const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
-    camps: _campConfigCache,
+    camps: _campConfigCache||[{nome:'',kw:'',click:'clicks_link'},{nome:'',kw:'',click:'clicks_link'},{nome:'',kw:'',click:'clicks_link'}],
     sheets_url: '',
-    sheets_urls: JSON.parse(JSON.stringify((await apiFetch('/api/config'))?.sheets_urls||{})),
+    sheets_urls: {},
     access_sheets: _accessSheets,
   })});
   if(res&&res.ok) toast('Planilhas salvas!');
@@ -706,14 +690,13 @@ async function saveAccessSheets(){
 
 async function loadOrganico(silent=false){
   const data=await loadConfig();
-  const urls=data?.sheets_urls||{};
   const accessSheets = (data?.access_sheets||[]).filter(s=>{
     if(!s.url) return false;
-    if(!s.users||!s.users.length) return USER?.role==='admin';
+    if(!s.users||!s.users.length) return true; // sem restrição = todos veem
     return USER?.role==='admin' || s.users.includes(USER?.username);
   });
 
-  const hasAny=ORG_SHEETS.some(s=>urls[s.id]) || accessSheets.length>0;
+  const hasAny = accessSheets.length>0;
   if(!hasAny){
     $('org-cards').innerHTML='';
     $('org-podium-wrap').style.display='none';
@@ -725,15 +708,9 @@ async function loadOrganico(silent=false){
 
   if(!silent) loading(true,'Importando planilhas...');
   try{
-    const results=await Promise.all(ORG_SHEETS.map(s=>fetchCSV(urls[s.id])));
+    const results=await Promise.all(accessSheets.map(s=>fetchCSV(s.url)));
     _orgData={};
-    ORG_SHEETS.forEach((s,i)=>{if(results[i])_orgData[s.id]=results[i];});
-    // Load access sheets (planilhas com controle de acesso)
-    const accessResults = await Promise.all(accessSheets.map(s=>fetchCSV(s.url)));
-    accessSheets.forEach((s,i)=>{
-      if(accessResults[i]) _orgData['access_'+i] = accessResults[i];
-    });
-    // Inject access sheets into ORG_SHEETS for rendering
+    accessSheets.forEach((s,i)=>{if(results[i])_orgData['access_'+i]=results[i];});
     window._activeAccessSheets = accessSheets.map((s,i)=>({
       id:'access_'+i, label:s.nome||'Planilha '+(i+1), icon:'📋', color:'#8B5CF6'
     }));
@@ -745,7 +722,7 @@ async function loadOrganico(silent=false){
 }
 
 function getAllSheets(){
-  return [...ORG_SHEETS, ...(window._activeAccessSheets||[])];
+  return window._activeAccessSheets||[];
 }
 
 function fmtOrgNum(v){
@@ -1410,7 +1387,20 @@ async function loadAdminUsers(){
   $('adm-tbody').innerHTML=data.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.client||'—'}</td><td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td><td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td><td>${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td></tr>`).join('');
   // Load access sheets config
   const cfg = await apiFetch('/api/config');
-  if(cfg?.access_sheets?.length) _accessSheets = cfg.access_sheets;
+  if(cfg?.access_sheets?.length){
+    _accessSheets = cfg.access_sheets;
+  } else {
+    // Migrate old sheets_urls to access_sheets
+    const su = cfg?.sheets_urls||{};
+    _accessSheets = [
+      {nome:'Florida Rental Car', url:su.florida||'', users:[]},
+      {nome:'BRA.BET',            url:su.bra||'',     users:[]},
+      {nome:'Rede Ronaldo (RR)',  url:su.rr||'',      users:[]},
+      {nome:'Rede Ronaldo',       url:'',              users:[]},
+      {nome:'Florida Rental Car', url:'',              users:[]},
+      {nome:'BRABET',             url:'',              users:[]},
+    ];
+  }
   renderAccessSheetsList();
 }
 async function adminAdd(){
