@@ -1106,21 +1106,18 @@ async function apiFetch(path,opts={}){
 
 function renderCampHeader(){
   const cfg=getCampConfig();
-  const active=cfg.filter(c=>c.kw);
+  const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  const _canSee=kw=>{if(!_uKws.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
+  const active=cfg.filter(c=>c.kw&&_canSee(c.kw)&&!userExcludesCamp(c.kw));
   const el=$('camp-header');
   if(!active.length){
     el.setAttribute('style','display:block');
     el.innerHTML=`<div style="padding:12px;font-size:13px;color:var(--muted);">Nenhuma campanha configurada. Solicite ao administrador.</div>`;
     return;
   }
-  const _uKwsH=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
-  const _canSeeH=kw=>{if(!_uKwsH.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKwsH.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
-  const activeFiltered=cfg.filter(c=>c.kw&&_canSeeH(c.kw)&&!userExcludesCamp(c.kw));
-  el.setAttribute('style',`display:grid;grid-template-columns:repeat(${activeFiltered.length},1fr);gap:14px;margin-bottom:24px;`);
+  el.setAttribute('style',`display:grid;grid-template-columns:repeat(${active.length},1fr);gap:14px;margin-bottom:24px;`);
   el.innerHTML=cfg.map((c,i)=>{
-    if(!c.kw) return '';
-    if(!_canSeeH(c.kw)) return '';
-    if(userExcludesCamp(c.kw)) return '';
+    if(!c.kw||!_canSee(c.kw)||userExcludesCamp(c.kw)) return '';
     return `<div class="camp-slot" style="--slot-color:${CAMP_COLORS[i]}">
       <div class="camp-slot-num">Campanha ${i+1}</div>
       <div class="camp-slot-name">${c.nome||'—'}</div>
