@@ -92,17 +92,28 @@ def get_bq():
     return bigquery.Client(project=BQ_PROJECT)
 
 def build_campaign_filter(user: dict) -> str:
-    """Filtra por palavras-chave do usuário. Vazio = vê tudo. Admin = vê tudo."""
+    """Filtra por palavras-chave do usuário. Vazio = vê tudo. Admin = vê tudo.
+    Separar por vírgula = OR. Usar + dentro de uma keyword = AND.
+    Ex: 'REDE, BRA BET+COPA' → REDE OR (BRA BET AND COPA)
+    """
     if user["role"] == "admin":
         return "1=1"
     keywords = [k.strip().upper() for k in user.get("campaigns", []) if k.strip()]
     if not keywords:
-        return "1=1"  # vazio = acesso a todas as campanhas
-    safe_kws = [kw.replace("'", "''").replace("\\", "\\\\") for kw in keywords]
-    conditions = " OR ".join(
-        [f"UPPER(CAMPAIGN_NAME) LIKE '%{kw}%'" for kw in safe_kws]
-    )
-    return f"({conditions})"
+        return "1=1"
+    
+    or_conditions = []
+    for kw in keywords:
+        kw = kw.replace("'", "''").replace("\\", "\\\\")
+        if '+' in kw:
+            # AND: todos os termos devem estar presentes
+            parts = [p.strip() for p in kw.split('+') if p.strip()]
+            and_cond = " AND ".join([f"UPPER(CAMPAIGN_NAME) LIKE '%{p}%'" for p in parts])
+            or_conditions.append(f"({and_cond})")
+        else:
+            or_conditions.append(f"UPPER(CAMPAIGN_NAME) LIKE '%{kw}%'")
+    
+    return f"({' OR '.join(or_conditions)})"
 
 # ── RESPONSE HELPERS ─────────────────────────────────────────
 def cors_headers():
