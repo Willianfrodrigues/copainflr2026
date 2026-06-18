@@ -856,11 +856,15 @@ function renderOrgPodium(){
     const iI=h.findIndex(x=>/influenc/i.test(x));
     const iM=h.findIndex(x=>/impress/i.test(x));
     if(iI<0||iM<0)return;
-    rows.slice(1).filter(r=>r.some(c=>c)).forEach(r=>{
+    let ec=0;
+    rows.slice(1).forEach(r=>{
+      if(!r.some(c=>c)){ec++;return;}
+      if(ec>=2) return;
+      ec=0;
       const name=(r[iI]||'').trim();
       if(!name||/total/i.test(name))return;
       const imp=parseOrgNum(r[iM]);
-      ranking[name]=(ranking[name]||0)+imp;
+      if(imp>0) ranking[name]=(ranking[name]||0)+imp;
     });
   });
   const sorted=Object.entries(ranking).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -914,7 +918,11 @@ function showOrgSheet(id){
       const iC   = h.findIndex(x=>/conte[uú]|stories|post/i.test(x));
       const iImp = h.findIndex(x=>/impress/i.test(x));
       const iView= h.findIndex(x=>/view|alcance/i.test(x));
-      rows.slice(1).filter(r=>r.some(c=>c)).forEach(r=>{
+      let _ec=0;
+      rows.slice(1).forEach(r=>{
+        if(!r.some(c=>c)){_ec++;return;}
+        if(_ec>=2) return;
+        _ec=0;
         const name=(r[iI>=0?iI:1]||'').trim();
         if(!name||/total/i.test(name)) return;
         const cont=(r[iC>=0?iC:0]||'').trim();
@@ -1003,9 +1011,15 @@ function showOrgSheet(id){
     return;
   }
 
-  // Formato antigo — mostra primeiras 4 colunas
+  // Formato antigo — mostra primeiras 4 colunas, para em 3 linhas vazias consecutivas
   const headers=h.slice(0,4);
-  const data=rows.slice(1).filter(r=>r.some(c=>c));
+  let emptyCount=0;
+  const data=rows.slice(1).filter(r=>{
+    if(!r.some(c=>c)){emptyCount++;return false;}
+    if(emptyCount>=2) return false;
+    emptyCount=0;
+    return true;
+  });
   if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
   if($('org-tbl-total'))$('org-tbl-total').textContent=`${data.length} linhas`;
   const idxImp=headers.findIndex(h=>/impress/i.test(h));
