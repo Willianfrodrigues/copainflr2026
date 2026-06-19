@@ -1206,6 +1206,21 @@ function renderKPIs(k){
     getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{ orgImp+=getSheetTotals(_orgData[s.id]).imp; });
   }
   const totalImp = (Number(k.impressions)||0) + orgImp;
+  let orgClk=0;
+getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
+  const rows=_orgData[s.id];if(!rows)return;
+  const h=rows[0];
+  const iClk=h.findIndex(x=>/clique|click/i.test(x));
+  if(iClk<0)return;
+  let ec=0;
+  rows.slice(1).forEach(r=>{
+    if(!r.some(c=>c)){ec++;return;}
+    if(ec>=2)return;
+    ec=0;
+    if(/total/i.test(r[0]||''))return;
+    orgClk+=parseOrgNum(r[iClk]||'');
+  });
+});
 
   const impCard = `<div class="kpi-card" style="--ac:#F5C842"><div class="kpi-lbl">Impressões</div><div class="kpi-val">${fmt(totalImp)}</div><div class="kpi-sub">${orgImp>0?'paid + orgânico':'total'}</div></div>`;
 
