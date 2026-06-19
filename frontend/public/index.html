@@ -1225,7 +1225,7 @@ getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
   const impCard = `<div class="kpi-card" style="--ac:#F5C842"><div class="kpi-lbl">Impressões</div><div class="kpi-val">${fmt(totalImp)}</div><div class="kpi-sub">${orgImp>0?'paid + orgânico':'total'}</div></div>`;
 
   const otherCards=[
-    {l:clickLabel,  v:fmt(k[clickKey]),  s:'tipo configurado', ac:'#1EC99B'},
+   {l:clickLabel,  v:fmt((Number(k[clickKey])||0)+orgClk),  s:'tipo configurado', ac:'#1EC99B'},
     {l:'CTR',       v:fmtP(k.ctr),       s:'taxa de cliques',  ac:'#EC4899'},
     {l:'ThruPlay',  v:fmt(k.thruplay),   s:'vídeos completos', ac:'#F5A623'},
     {l:'VTR',       v:fmtP(k.vtr),       s:'view through rate',ac:'#8B5CF6'},
