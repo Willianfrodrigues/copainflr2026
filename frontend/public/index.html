@@ -736,8 +736,14 @@ function fmtOrgNum(v){
   return v;
 }
 function parseOrgNum(v){
-  if(!v||v==='-'||v.toLowerCase()==='pendente') return 0;
-  return parseFloat(v.replace(/\./g,'').replace(',','.').replace(/[^\d.]/g,''))||0;
+  if(!v||v==='-') return 0;
+  const s=String(v).trim().toLowerCase();
+  if(s==='pendente'||s==='') return 0;
+  if(s.endsWith('m')) return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.'))*1000000;
+  if(s.endsWith('k')) return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.'))*1000;
+  if(/\d\.\d{3}/.test(s)&&s.includes(',')) return parseFloat(s.replace(/\./g,'').replace(',','.'))||0;
+  if(/\d\.\d{3}/.test(s)&&!s.includes(',')) return parseFloat(s.replace(/\./g,''))||0;
+  return parseFloat(s.replace(',','.').replace(/[^\d.]/g,''))||0;
 }
 
 function getSheetTotals(rows){
@@ -1189,7 +1195,9 @@ async function loadData(){
 
 function renderKPIs(k){
   const cfg=getCampConfig();
-  const clickKey=cfg.find(c=>c.kw)?.click||'clicks';
+  const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  const activeCamp=cfg.find(c=>c.kw&&(_uKws.length===0||_uKws.some(uk=>c.kw.toUpperCase().includes(uk)||uk.includes(c.kw.toUpperCase()))));
+  const clickKey=activeCamp?.click||'clicks_link';
   const clickLabel=CLICK_LABELS[clickKey]||'Cliques';
 
   // Soma impressões orgânicas (apenas campanhas: florida, bra, rr — não Dados Gerais)
