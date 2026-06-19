@@ -951,7 +951,7 @@ function showOrgSheet(id){
         const key=name+'||'+cont;
         if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0,clk:0,alc:0};
         merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
-        merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
+        merged[key].view += iView>=0?parseOrgNum(r[iView]||''):0;
         merged[key].clk  += parseOrgNum(r[iClk>=0?iClk:5]||'');
         merged[key].alc  += parseOrgNum(r[iAlcU>=0?iAlcU:2]||'');
       });
