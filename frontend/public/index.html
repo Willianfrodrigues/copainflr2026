@@ -1217,11 +1217,25 @@ function renderKPIs(k){
     getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{ orgImp+=getSheetTotals(_orgData[s.id]).imp; });
   }
   const totalImp = (Number(k.impressions)||0) + orgImp;
-
+  let orgClk=0;
+getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
+  const rows=_orgData[s.id];if(!rows)return;
+  const h=rows[0];
+  const iClk=h.findIndex(x=>/clique|click/i.test(x));
+  if(iClk<0)return;
+  let ec=0;
+  rows.slice(1).forEach(r=>{
+    if(!r.some(c=>c)){ec++;return;}
+    if(ec>=2)return;
+    ec=0;
+    if(/total/i.test(r[0]||''))return;
+    orgClk+=parseOrgNum(r[iClk]||'');
+  });
+});
   const impCard = `<div class="kpi-card" style="--ac:#F5C842"><div class="kpi-lbl">Impressões</div><div class="kpi-val">${fmt(totalImp)}</div><div class="kpi-sub">${orgImp>0?'paid + orgânico':'total'}</div></div>`;
 
   const otherCards=[
-    {l:clickLabel,  v:fmt(k[clickKey]),  s:'tipo configurado', ac:'#1EC99B'},
+    {l:clickLabel,  v:fmt((Number(k[clickKey])||0)+orgClk),  s:'tipo configurado', ac:'#1EC99B'},
     {l:'CTR',       v:fmtP(k.ctr),       s:'taxa de cliques',  ac:'#EC4899'},
     {l:'ThruPlay',  v:fmt(k.thruplay),   s:'vídeos completos', ac:'#F5A623'},
     {l:'VTR',       v:fmtP(k.vtr),       s:'view through rate',ac:'#8B5CF6'},
