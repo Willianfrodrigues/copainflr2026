@@ -736,27 +736,8 @@ function fmtOrgNum(v){
   return v;
 }
 function parseOrgNum(v){
-  if(!v||v==='-') return 0;
-  const s = String(v).trim().toLowerCase();
-  if(s==='pendente'||s==='') return 0;
-  // Suporte a sufixos M e K vindos da planilha
-  if(s.endsWith('m')){
-    return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.')) * 1_000_000;
-  }
-  if(s.endsWith('k')){
-    return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.')) * 1_000;
-  }
-  // Formato brasileiro: 1.234.567 ou 1.234,56
-  // Se tem vírgula depois de ponto → formato BR (ponto = milhar, vírgula = decimal)
-  if(/\d\.\d{3}/.test(s) && s.includes(',')){
-    return parseFloat(s.replace(/\./g,'').replace(',','.')) || 0;
-  }
-  // Só ponto como milhar (sem vírgula): 1.234.567
-  if(/\d\.\d{3}/.test(s) && !s.includes(',')){
-    return parseFloat(s.replace(/\./g,'')) || 0;
-  }
-  // Fallback
-  return parseFloat(s.replace(',','.').replace(/[^\d.]/g,'')) || 0;
+  if(!v||v==='-'||v.toLowerCase()==='pendente') return 0;
+  return parseFloat(v.replace(/\./g,'').replace(',','.').replace(/[^\d.]/g,''))||0;
 }
 
 function getSheetTotals(rows){
@@ -951,7 +932,7 @@ function showOrgSheet(id){
         const key=name+'||'+cont;
         if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0,clk:0,alc:0};
         merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
-        merged[key].view += iView>=0?parseOrgNum(r[iView]||''):0;
+        merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
         merged[key].clk  += parseOrgNum(r[iClk>=0?iClk:5]||'');
         merged[key].alc  += parseOrgNum(r[iAlcU>=0?iAlcU:2]||'');
       });
@@ -1043,7 +1024,7 @@ function showOrgSheet(id){
   }
 
   // Formato antigo — mostra primeiras 4 colunas, para em 3 linhas vazias consecutivas
-  const headers=h.slice(0,5);
+  const headers=h.slice(0,4);
   let emptyCount=0;
   const data=rows.slice(1).filter(r=>{
     if(!r.some(c=>c)){emptyCount++;return false;}
@@ -1057,7 +1038,7 @@ function showOrgSheet(id){
   const maxImp=Math.max(...data.map(r=>parseOrgNum(r[idxImp]||'')),1);
   $('org-head').innerHTML=`<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
   $('org-body').innerHTML=data.map(r=>{
-    const row4=r.slice(0,5);
+    const row4=r.slice(0,4);
     const isTotal=/total/i.test(row4[0]||'');
     const style=isTotal?'background:var(--bg2);font-weight:700;border-top:2px solid var(--border);':'';
     const cells=headers.map((_,i)=>{
@@ -1217,25 +1198,11 @@ function renderKPIs(k){
     getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{ orgImp+=getSheetTotals(_orgData[s.id]).imp; });
   }
   const totalImp = (Number(k.impressions)||0) + orgImp;
-  let orgClk=0;
-getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
-  const rows=_orgData[s.id];if(!rows)return;
-  const h=rows[0];
-  const iClk=h.findIndex(x=>/clique|click/i.test(x));
-  if(iClk<0)return;
-  let ec=0;
-  rows.slice(1).forEach(r=>{
-    if(!r.some(c=>c)){ec++;return;}
-    if(ec>=2)return;
-    ec=0;
-    if(/total/i.test(r[0]||''))return;
-    orgClk+=parseOrgNum(r[iClk]||'');
-  });
-});
+
   const impCard = `<div class="kpi-card" style="--ac:#F5C842"><div class="kpi-lbl">Impressões</div><div class="kpi-val">${fmt(totalImp)}</div><div class="kpi-sub">${orgImp>0?'paid + orgânico':'total'}</div></div>`;
 
   const otherCards=[
-    {l:clickLabel,  v:fmt((Number(k[clickKey])||0)+orgClk),  s:'tipo configurado', ac:'#1EC99B'},
+    {l:clickLabel,  v:fmt(k[clickKey]),  s:'tipo configurado', ac:'#1EC99B'},
     {l:'CTR',       v:fmtP(k.ctr),       s:'taxa de cliques',  ac:'#EC4899'},
     {l:'ThruPlay',  v:fmt(k.thruplay),   s:'vídeos completos', ac:'#F5A623'},
     {l:'VTR',       v:fmtP(k.vtr),       s:'view through rate',ac:'#8B5CF6'},
@@ -1501,7 +1468,16 @@ function switchTab(name,el){
 async function loadAdminUsers(){
   const data=await apiFetch('/api/users');if(!data)return;
   _allUsers = data;
-  $('adm-tbody').innerHTML=data.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.client||'—'}</td><td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td><td style="font-size:12px;color:#F05A5A;font-family:monospace;">${(u.exclude||[]).join(', ')||'—'}</td><td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td><td>${u.role!=='admin'?`<button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td></tr>`).join('');
+  $('adm-tbody').innerHTML=data.map(u=>`<tr id="urow-${u.username}">
+    <td><strong>${u.username}</strong></td>
+    <td>${u.client||'—'}</td>
+    <td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td>
+    <td style="font-size:12px;color:#F05A5A;font-family:monospace;">${(u.exclude||[]).join(', ')||'—'}</td>
+    <td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td>
+    <td style="display:flex;gap:6px;">${u.role!=='admin'?`
+      <button class="btn-g" style="padding:4px 10px;font-size:12px;" onclick="adminEdit('${u.username}','${(u.campaigns||[]).join(',')}','${(u.exclude||[]).join(',')}','${u.client||''}')">✏️ Editar</button>
+      <button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td>
+  </tr>`).join('');
   // Load access sheets config
   const cfg = await apiFetch('/api/config');
   if(cfg?.access_sheets?.length){
@@ -1530,6 +1506,38 @@ async function adminAdd(){
   if(res?.ok){['nu','np','nc','nk','nexclude'].forEach(id=>{if($(id))$(id).value='';});toast('Usuário criado!');loadAdminUsers();}
   else toast(res?.error||'Erro ao criar.','red');
 }
+async function adminEdit(username, campaigns, exclude, client){
+  const tr = document.getElementById('urow-'+username);
+  if(!tr) return;
+  // Expandir linha com campos editáveis
+  const next = tr.nextSibling;
+  const existing = document.getElementById('uedit-'+username);
+  if(existing){existing.remove();return;}
+  const row = document.createElement('tr');
+  row.id = 'uedit-'+username;
+  row.style.background = 'var(--bg2)';
+  row.innerHTML = `<td colspan="6" style="padding:14px 16px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+      <div class="af"><label>Nome/Client</label><input id="ec-${username}" value="${client}" placeholder="Nome"></div>
+      <div class="af"><label>Acesso (palavras-chave)</label><input id="ek-${username}" value="${campaigns}" placeholder="ex: REDE, BRA"></div>
+      <div class="af"><label>Excluir (palavras-chave)</label><input id="ee-${username}" value="${exclude}" placeholder="ex: INFLR"></div>
+      <button class="btn-g" onclick="adminSaveEdit('${username}')">💾 Salvar</button>
+    </div>
+  </td>`;
+  tr.parentNode.insertBefore(row, next);
+}
+
+async function adminSaveEdit(username){
+  const client = document.getElementById('ec-'+username)?.value.trim()||'';
+  const kRaw   = document.getElementById('ek-'+username)?.value.trim()||'';
+  const exRaw  = document.getElementById('ee-'+username)?.value.trim()||'';
+  const campaigns = kRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const exclude   = exRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  const res = await apiFetch('/api/users',{method:'PUT',body:JSON.stringify({username,client,campaigns,exclude})});
+  if(res?.ok){toast('Usuário atualizado!');loadAdminUsers();}
+  else toast(res?.error||'Erro ao salvar.','red');
+}
+
 async function adminDel(username){
   if(!confirm(`Remover "${username}"?`))return;
   const res=await apiFetch('/api/users',{method:'DELETE',body:JSON.stringify({username})});
