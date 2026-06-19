@@ -73,12 +73,13 @@ class handler(BaseHTTPRequestHandler):
             _require_admin(self.headers)
             length = int(self.headers.get("Content-Length", 0))
             body   = json.loads(self.rfile.read(length))
-            username = body.get("username")
+            username  = body.get("username")
             campaigns = body.get("campaigns", [])
             exclude   = body.get("exclude", [])
+            client    = body.get("client", "")
             conn = get_db(); cur = conn.cursor()
-            cur.execute("UPDATE users SET campaigns=%s, exclude=%s WHERE username=%s",
-                        (campaigns, exclude, username))
+            cur.execute("UPDATE users SET campaigns=%s, exclude=%s, client=%s WHERE username=%s",
+                        (campaigns, exclude, client, username))
             conn.commit(); cur.close(); conn.close()
             self._send(json_response({"ok": True}))
         except (PermissionError, jwt.ExpiredSignatureError) as e:
