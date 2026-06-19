@@ -1241,13 +1241,15 @@ function renderCampTable(rows){
   const filtered = rows.filter(r=>(r.impressions||0)>0 && !userExcludesCamp(r.CAMPAIGN_NAME));
   if(!filtered.length){$('c-tbody').innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ico">📋</div><h3>Nenhuma campanha no período</h3></div></td></tr>`;return;}
   const mI=Math.max(...filtered.map(r=>r.impressions||0),1);
-  const mC=Math.max(...filtered.map(r=>r.clicks||0),1);
+  const cfg=getCampConfig();
+const getClk=r=>{const c=cfg.find(c=>c.kw&&(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));return r[c?.click||'clicks_link']||0;};
+const mC=Math.max(...filtered.map(r=>getClk(r)),1);
   const mT=Math.max(...filtered.map(r=>r.thruplay||0),1);
   $('c-tbody').innerHTML=filtered.map(row=>{
     const p=(row.platform||'').toLowerCase();
     const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':'other';
     const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':row.platform||'—';
-    return`<tr><td style="max-width:260px;word-break:break-word;font-size:12px;">${row.CAMPAIGN_NAME||'—'}</td><td><span class="plt plt-${pc}">${pl}</span></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.impressions||0)/mI*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(row.impressions)}</span></div></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.clicks||0)/mC*100).toFixed(1)}%;background:#1EC99B;"></div></div><span class="bar-v">${fmt(row.clicks)}</span></div></td><td>${fmtP(row.ctr)}</td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.thruplay||0)/mT*100).toFixed(1)}%;background:#3B82F6;"></div></div><span class="bar-v">${fmt(row.thruplay)}</span></div></td><td>${fmtP(row.vtr)}</td></tr>`;
+    return`<tr><td style="max-width:260px;word-break:break-word;font-size:12px;">${row.CAMPAIGN_NAME||'—'}</td><td><span class="plt plt-${pc}">${pl}</span></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.impressions||0)/mI*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(row.impressions)}</span></div></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${(getClk(row)/mC*100).toFixed(1)}%;background:#1EC99B;"></div></div><span class="bar-v">${fmt(getClk(row))}</span></div></td><td>${fmtP(row.ctr)}</td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.thruplay||0)/mT*100).toFixed(1)}%;background:#3B82F6;"></div></div><span class="bar-v">${fmt(row.thruplay)}</span></div></td><td>${fmtP(row.vtr)}</td></tr>`;
   }).join('');
 }
 
