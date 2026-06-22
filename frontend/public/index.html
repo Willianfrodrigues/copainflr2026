@@ -1347,7 +1347,8 @@ function populateInflCampFilter(){
 function getFilteredInflRows(){
   const search=($('infl-search')?.value||'').toLowerCase();
   const camp=$('infl-camp-filter')?.value||'';
-  return allInflRows.filter(r=>{
+return allInflRows.filter(r=>{
+    if((r.impressions||0)===0) return false;
     const matchSearch=!search||(r.influenciador||'').toLowerCase().includes(search);
     const matchCamp=!camp||(r.CAMPAIGN_NAME||'')==camp;
     return matchSearch&&matchCamp;
