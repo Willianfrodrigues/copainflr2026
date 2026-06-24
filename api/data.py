@@ -7,7 +7,7 @@ from _helpers import (get_bq, get_db, build_campaign_filter, get_token_from_head
 
 BQ_TABLE_SAFE = f"`{BQ_TABLE}`"
 
-# ── PLANILHA EXTRA ────────────────────────────────────────────
+# ── PLANILHA EXTRA (URL via env var SHEETS_DATA_URL) ──────────
 
 def _fetch_csv(url):
     req = urllib.request.Request(url.strip(), headers={"User-Agent": "Mozilla/5.0"})
@@ -31,12 +31,11 @@ def _normalize(row):
                     return v.strip() if isinstance(v, str) else str(v)
         return ""
 
-    date   = get("date", "data")
-    camp   = get("CAMPAIGN_NAME", "campaign_name", "campanha")
+    date = get("date", "data")
+    camp = get("CAMPAIGN_NAME", "campaign_name", "campanha")
     if not date or not camp:
         return None
 
-    # Normaliza data DD/MM/YY ou DD/MM/YYYY para YYYY-MM-DD
     if "/" in date:
         parts = date.split("/")
         if len(parts) == 3:
@@ -45,20 +44,20 @@ def _normalize(row):
                 y = "20" + y
             date = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
 
-    clicks     = get("CLICKS", "clicks", "cliques")
-    clicks_link= get("CLICKS_LINK", "clicks_link")
+    clicks      = get("CLICKS", "clicks", "cliques")
+    clicks_link = get("CLICKS_LINK", "clicks_link")
 
     return {
-        "date":                   date,
-        "platform":               get("platform", "plataforma") or "Kwai",
-        "CAMPAIGN_NAME":          camp,
-        "AD_NAME":                get("AD_NAME", "ad_name"),
-        "INFLUENCIADOR":          get("INFLUENCIADOR", "influenciador"),
-        "IMPRESSIONS":            _to_int(get("IMPRESSIONS", "impressions", "impressões")),
-        "CLICKS":                 _to_int(clicks),
-        "CLICKS_LINK":            _to_int(clicks_link) if clicks_link else _to_int(clicks),
-        "THRUPLAY":               _to_int(get("THRUPLAY", "thruplay")),
-        "VIEWS100":               _to_int(get("VIEWS100", "views100")),
+        "date":        date,
+        "platform":    get("platform", "plataforma") or "Kwai",
+        "CAMPAIGN_NAME": camp,
+        "AD_NAME":     get("AD_NAME", "ad_name"),
+        "INFLUENCIADOR": get("INFLUENCIADOR", "influenciador"),
+        "IMPRESSIONS": _to_int(get("IMPRESSIONS", "impressions", "impressões")),
+        "CLICKS":      _to_int(clicks),
+        "CLICKS_LINK": _to_int(clicks_link) if clicks_link else _to_int(clicks),
+        "THRUPLAY":    _to_int(get("THRUPLAY", "thruplay")),
+        "VIEWS100":    _to_int(get("VIEWS100", "views100")),
     }
 
 def _filter_sheet(rows, user, start, end):
@@ -83,35 +82,35 @@ def _filter_sheet(rows, user, start, end):
     return out
 
 def _get_sheet_rows(user, start, end):
+    # URL via env var (mais simples e confiável que banco)
+    url = os.environ.get("SHEETS_DATA_URL", "").strip()
+    if not url:
+        # Fallback: tenta buscar do banco
+        try:
+            conn = get_db(); cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS app_config (
+                    key TEXT PRIMARY KEY, value TEXT NOT NULL
+                )
+            """)
+            conn.commit()
+            cur.execute("SELECT value FROM app_config WHERE key='sheets_data_url'")
+            row = cur.fetchone()
+            cur.close(); conn.close()
+            if row and row[0]:
+                url = row[0].strip()
+        except:
+            pass
+    if not url:
+        return []
     try:
-        conn = get_db(); cur = conn.cursor()
-        # Garante que a tabela existe
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS app_config (
-                key TEXT PRIMARY KEY, value TEXT NOT NULL
-            )
-        """)
-        conn.commit()
-        cur.execute("SELECT key, value FROM app_config")
-        all_rows = cur.fetchall()
-        cur.execute("SELECT value FROM app_config WHERE key='sheets_data_url'")
-        row = cur.fetchone()
-        cur.close(); conn.close()
-        # Debug: store all keys found
-        import builtins
-        builtins._debug_app_config = str(all_rows)[:300]
-        if not row or not row[0] or not row[0].strip():
-            return [{"_error": f"URL not found. All keys: {[r[0] for r in all_rows]}"}]
-        raw  = _fetch_csv(row[0])
-        norm = [_normalize(r) for r in raw]
+        raw      = _fetch_csv(url)
+        norm     = [_normalize(r) for r in raw]
         filtered = _filter_sheet([r for r in norm if r], user, start, end)
         return filtered
     except Exception as e:
-        import traceback as _tb
-        _sheet_last_error = f"{e} | {_tb.format_exc()}"
-        print(f"[sheets] erro: {_sheet_last_error}")
-        # Return error in a special way so we can debug
-        return [{"_error": str(e)}]
+        print(f"[sheets] erro: {e}")
+        return []
 
 # ── MERGE HELPERS ─────────────────────────────────────────────
 
@@ -125,8 +124,8 @@ def _sheet_kpi(rows):
         v100 += r["VIEWS100"]
     return {"impressions": imp, "clicks": clk, "clicks_link": clkl,
             "thruplay": tp, "views100": v100,
-            "ctr":  (clkl / imp * 100) if imp else 0,
-            "vtr":  (tp   / imp * 100) if imp else 0}
+            "ctr": (clkl / imp * 100) if imp else 0,
+            "vtr": (tp   / imp * 100) if imp else 0}
 
 def _merge_kpi(bq, srows):
     if not srows: return bq
@@ -156,7 +155,6 @@ def _merge_timeseries(bq_list, srows):
             bmap[d]["impressions"] += s["impressions"]
             bmap[d]["clicks"]      += s["clicks"]
             bmap[d]["thruplay"]    += s["thruplay"]
-            bmap[d]["views100"]    += s["views100"]
             imp = bmap[d]["impressions"]
             bmap[d]["ctr"] = (bmap[d]["clicks"] / imp * 100) if imp else 0
             bmap[d]["vtr"] = (bmap[d]["thruplay"] / imp * 100) if imp else 0
@@ -174,7 +172,7 @@ def _merge_by_campaign(bq_list, srows):
         key = (r["platform"], r["CAMPAIGN_NAME"])
         if key not in combined:
             combined[key] = {"platform": r["platform"], "CAMPAIGN_NAME": r["CAMPAIGN_NAME"],
-                             "impressions":0,"clicks":0,"clicks_link":0,"thruplay":0,"views100":0,"ctr":0,"vtr":0}
+                             "impressions":0,"clicks":0,"clicks_link":0,"thruplay":0,"views100":0}
         for f in ["impressions","clicks","clicks_link","thruplay","views100"]:
             combined[key][f] = (combined[key].get(f) or 0) + (r.get(f.upper()) or r.get(f) or 0)
     result = sorted(combined.values(), key=lambda x: -(x.get("impressions") or 0))
@@ -308,14 +306,9 @@ class handler(BaseHTTPRequestHandler):
 
             camp_filter = build_campaign_filter(user)
             srows       = _get_sheet_rows(user, start, end)
-            # Debug: add sheet row count to response
-            _sheet_error = srows[0].get("_error","") if srows and "_error" in srows[0] else ""
-            if _sheet_error: srows = []
-            _sheet_debug = {"_sheet_rows": len(srows), "_sheet_error": _sheet_error, "_sheet_sample": str(srows[:1])[:200] if srows else "empty"}
 
             if type_ == "kpi":
                 result = _merge_kpi(get_kpi(camp_filter, start, end), srows)
-                result.update(_sheet_debug)
             elif type_ == "timeseries":
                 result = {"rows": _merge_timeseries(get_timeseries(camp_filter, start, end), srows)}
             elif type_ == "by_campaign":
