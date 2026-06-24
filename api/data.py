@@ -84,9 +84,7 @@ def _filter_sheet(rows, user, start, end):
 
 def _get_sheet_rows(user, start, end):
     try:
-        import os, psycopg2
-        db_url = os.environ.get("NEON_DATABASE_URL") or os.environ.get("DATABASE_URL","")
-        conn = psycopg2.connect(db_url, sslmode="require"); cur = conn.cursor()
+        conn = get_db(); cur = conn.cursor()
         # Garante que a tabela existe
         cur.execute("""
             CREATE TABLE IF NOT EXISTS app_config (
