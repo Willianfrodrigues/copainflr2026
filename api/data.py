@@ -92,11 +92,16 @@ def _get_sheet_rows(user, start, end):
             )
         """)
         conn.commit()
+        cur.execute("SELECT key, value FROM app_config")
+        all_rows = cur.fetchall()
         cur.execute("SELECT value FROM app_config WHERE key='sheets_data_url'")
         row = cur.fetchone()
         cur.close(); conn.close()
+        # Debug: store all keys found
+        import builtins
+        builtins._debug_app_config = str(all_rows)[:300]
         if not row or not row[0] or not row[0].strip():
-            return []
+            return [{"_error": f"URL not found. All keys: {[r[0] for r in all_rows]}"}]
         raw  = _fetch_csv(row[0])
         norm = [_normalize(r) for r in raw]
         filtered = _filter_sheet([r for r in norm if r], user, start, end)
