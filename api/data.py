@@ -84,7 +84,16 @@ def _filter_sheet(rows, user, start, end):
 
 def _get_sheet_rows(user, start, end):
     try:
-        conn = get_db(); cur = conn.cursor()
+        import os, psycopg2
+        db_url = os.environ.get("NEON_DATABASE_URL") or os.environ.get("DATABASE_URL","")
+        conn = psycopg2.connect(db_url, sslmode="require"); cur = conn.cursor()
+        # Garante que a tabela existe
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app_config (
+                key TEXT PRIMARY KEY, value TEXT NOT NULL
+            )
+        """)
+        conn.commit()
         cur.execute("SELECT value FROM app_config WHERE key='sheets_data_url'")
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -92,9 +101,11 @@ def _get_sheet_rows(user, start, end):
             return []
         raw  = _fetch_csv(row[0])
         norm = [_normalize(r) for r in raw]
-        return _filter_sheet([r for r in norm if r], user, start, end)
+        filtered = _filter_sheet([r for r in norm if r], user, start, end)
+        return filtered
     except Exception as e:
-        print(f"[sheets] erro: {e}")
+        import traceback as _tb
+        print(f"[sheets] erro: {e} | {_tb.format_exc()}")
         return []
 
 # ── MERGE HELPERS ─────────────────────────────────────────────
