@@ -105,8 +105,10 @@ def _get_sheet_rows(user, start, end):
         return filtered
     except Exception as e:
         import traceback as _tb
-        print(f"[sheets] erro: {e} | {_tb.format_exc()}")
-        return []
+        _sheet_last_error = f"{e} | {_tb.format_exc()}"
+        print(f"[sheets] erro: {_sheet_last_error}")
+        # Return error in a special way so we can debug
+        return [{"_error": str(e)}]
 
 # ── MERGE HELPERS ─────────────────────────────────────────────
 
@@ -304,7 +306,9 @@ class handler(BaseHTTPRequestHandler):
             camp_filter = build_campaign_filter(user)
             srows       = _get_sheet_rows(user, start, end)
             # Debug: add sheet row count to response
-            _sheet_debug = {"_sheet_rows": len(srows), "_sheet_sample": str(srows[:1])[:200] if srows else "empty"}
+            _sheet_error = srows[0].get("_error","") if srows and "_error" in srows[0] else ""
+            if _sheet_error: srows = []
+            _sheet_debug = {"_sheet_rows": len(srows), "_sheet_error": _sheet_error, "_sheet_sample": str(srows[:1])[:200] if srows else "empty"}
 
             if type_ == "kpi":
                 result = _merge_kpi(get_kpi(camp_filter, start, end), srows)
