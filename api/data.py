@@ -1,315 +1,1655 @@
-import json, os, csv, io, traceback, re
-import jwt, urllib.request
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
-from _helpers import (get_bq, get_db, build_campaign_filter, get_token_from_header,
-                      json_response, error_response, cors_headers, BQ_TABLE)
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>inflr — Copa Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+:root{
+  --gold:#F5C842;--gold2:#E8A800;--gold-light:rgba(245,200,66,.13);
+  --green:#1EC99B;--green-dark:#17A880;--green-light:#E8FAF5;
+  --bg:#0D1F1A;--bg2:#122318;--surface:#162D24;--surface2:#1C3A2E;
+  --border:rgba(255,255,255,.08);--border2:rgba(245,200,66,.2);
+  --text:#F0F7F4;--muted:rgba(255,255,255,.45);
+  --danger:#F05A5A;--blue:#3B82F6;--pink:#EC4899;--purple:#8B5CF6;--cyan:#06B6D4;
+  --radius:12px;--shadow:0 2px 16px rgba(0,0,0,.4);--shadow-lg:0 8px 32px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 
-BQ_TABLE_SAFE = f"`{BQ_TABLE}`"
+/* LOGIN */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 60% 20%,rgba(245,200,66,.08) 0%,transparent 55%),linear-gradient(160deg,#0A1A12 0%,#0D1F1A 100%);position:relative;overflow:hidden;}
+#login-screen::before{content:'⚽';position:absolute;font-size:420px;opacity:.025;top:-80px;right:-120px;line-height:1;}
+.login-card{background:rgba(22,45,36,.85);backdrop-filter:blur(24px);border:1px solid var(--border2);border-radius:22px;padding:52px 44px;width:420px;box-shadow:0 24px 64px rgba(0,0,0,.6);position:relative;z-index:1;}
+.brand{font-family:'Space Grotesk',sans-serif;font-size:38px;font-weight:700;color:var(--green);letter-spacing:-2px;text-align:center;}
+.tagline{font-size:11px;color:var(--muted);text-align:center;margin-top:4px;letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px;}
+.copa-badge{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:30px;}
+.copa-badge span{font-size:11px;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;font-weight:600;}
+.login-title{font-size:17px;font-weight:600;color:#fff;text-align:center;margin-bottom:4px;}
+.login-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:28px;}
+.lf label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;}
+.lf input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid rgba(245,200,66,.15);background:rgba(255,255,255,.05);color:#fff;font-size:14px;font-family:'Inter',sans-serif;outline:none;transition:border-color .2s,background .2s;margin-bottom:14px;}
+.lf input::placeholder{color:rgba(255,255,255,.2);}
+.lf input:focus{border-color:var(--gold);background:rgba(245,200,66,.06);}
+.login-btn{width:100%;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--gold) 0%,var(--gold2) 100%);color:#0D1F1A;font-size:15px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;margin-top:4px;transition:opacity .2s,transform .1s;box-shadow:0 4px 14px rgba(245,200,66,.3);}
+.login-btn:hover{opacity:.9;transform:translateY(-1px);}
+.login-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.login-err{background:rgba(240,90,90,.12);border:1px solid rgba(240,90,90,.25);border-radius:8px;padding:10px 13px;font-size:13px;color:#FFA0A0;margin-top:12px;display:none;text-align:center;}
 
-# ── PLANILHA EXTRA ────────────────────────────────────────────
+/* APP */
+#app{display:none;min-height:100vh;}
+.loading-ov{position:fixed;inset:0;background:rgba(13,31,26,.9);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:14px;}
+.spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-txt{font-size:14px;color:var(--muted);font-weight:500;}
 
-def _fetch_csv(url):
-    req = urllib.request.Request(url.strip(), headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        text = resp.read().decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(text))
-    return list(reader)
+/* TOPBAR */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:62px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.4);}
+.t-left{display:flex;align-items:center;gap:16px;}
+.logo{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:var(--green);letter-spacing:-1px;}
+.copa-pill{display:flex;align-items:center;gap:6px;background:var(--gold-light);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--gold);}
+.t-right{display:flex;align-items:center;gap:8px;}
+.date-row{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 12px;}
+.date-row input{border:none;background:transparent;font-size:13px;color:var(--text);font-family:'Inter',sans-serif;outline:none;cursor:pointer;color-scheme:dark;}
+.date-sep{color:var(--muted);}
+.btn-gold{padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0D1F1A;font-size:13px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;transition:opacity .2s;}
+.btn-gold:hover{opacity:.88;}
+.btn-gold:disabled{opacity:.5;cursor:not-allowed;}
+.btn-outline{padding:7px 13px;border-radius:8px;border:1px solid var(--border);background:transparent;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .2s;font-family:'Inter',sans-serif;}
+.btn-outline:hover{border-color:var(--danger);color:var(--danger);}
 
-def _to_int(v):
-    try:
-        return int(float(str(v).replace(".", "").replace(",", "").strip()))
-    except:
-        return 0
+/* MAIN */
+.main{max-width:1340px;margin:0 auto;padding:26px 22px;}
+.sec-lbl{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:12px;margin-top:28px;}
 
-def _normalize(row):
-    def get(*keys):
-        for k in keys:
-            for col in row:
-                if col.strip().lower() == k.lower():
-                    v = row[col]
-                    return v.strip() if isinstance(v, str) else str(v)
-        return ""
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:22px;width:fit-content;}
+.tab{padding:8px 20px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--muted);font-family:'Inter',sans-serif;transition:all .2s;}
+.tab.active{background:var(--gold-light);color:var(--gold);border:1px solid var(--border2);}
 
-    date   = get("date", "data")
-    camp   = get("CAMPAIGN_NAME", "campaign_name", "campanha")
-    if not date or not camp:
-        return None
+/* CAMPANHAS CONFIG HEADER */
+.camp-header{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;} /* colunas sobrescritas pelo JS */
+.camp-slot{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;}
+.camp-slot::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--slot-color,var(--green));}
+.camp-slot-num{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
+.camp-slot-name{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:var(--text);margin-bottom:2px;}
+.camp-slot-kw{font-size:11px;color:var(--muted);}
+.camp-slot-click{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--gold-light);color:var(--gold);}
 
-    # Normaliza data DD/MM/YY ou DD/MM/YYYY para YYYY-MM-DD
-    if "/" in date:
-        parts = date.split("/")
-        if len(parts) == 3:
-            d, m, y = parts
-            if len(y) == 2:
-                y = "20" + y
-            date = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+/* KPI GRID */
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 16px;position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s;}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);}
+.kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--ac,var(--green));border-radius:var(--radius) var(--radius) 0 0;}
+.kpi-lbl{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.kpi-val{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:var(--text);line-height:1;margin-bottom:3px;}
+.kpi-val.nd{font-size:14px;color:var(--muted);font-weight:400;}
+.kpi-sub{font-size:11px;color:var(--muted);}
 
-    clicks     = get("CLICKS", "clicks", "cliques")
-    clicks_link= get("CLICKS_LINK", "clicks_link")
+/* CAMP COMPARISON */
+.camp-compare{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;} /* colunas sobrescritas pelo JS */
+.cmp-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.cmp-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.cmp-name{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;}
+.cmp-body{padding:14px 18px;}
+.cmp-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.cmp-row:last-child{border-bottom:none;}
+.cmp-lbl{font-size:12px;color:var(--muted);}
+.cmp-val{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;}
 
-    return {
-        "date":                   date,
-        "platform":               get("platform", "plataforma") or "Kwai",
-        "CAMPAIGN_NAME":          camp,
-        "AD_NAME":                get("AD_NAME", "ad_name"),
-        "INFLUENCIADOR":          get("INFLUENCIADOR", "influenciador"),
-        "IMPRESSIONS":            _to_int(get("IMPRESSIONS", "impressions", "impressões")),
-        "CLICKS":                 _to_int(clicks),
-        "CLICKS_LINK":            _to_int(clicks_link) if clicks_link else _to_int(clicks),
-        "THRUPLAY":               _to_int(get("THRUPLAY", "thruplay")),
-        "VIEWS100":               _to_int(get("VIEWS100", "views100")),
+/* CHARTS */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);}
+.ch-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.ch-title{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;}
+.ch-badge{font-size:11px;background:var(--gold-light);color:var(--gold);padding:3px 9px;border-radius:20px;font-weight:600;}
+.ch-wrap{position:relative;height:200px;}
+
+/* TABLE */
+.tbl-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.tbl-top{padding:15px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.tbl-ttl{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;}
+table{width:100%;border-collapse:collapse;}
+thead th{background:var(--bg2);padding:9px 15px;text-align:left;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:var(--surface2);}
+tbody td{padding:11px 15px;font-size:13px;}
+.bar-w{display:flex;align-items:center;gap:7px;}
+.bar-bg{flex:1;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;min-width:44px;}
+.bar-f{height:100%;border-radius:3px;transition:width .7s ease;}
+.bar-v{font-size:12px;font-weight:600;min-width:42px;text-align:right;color:var(--text);}
+.plt{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;}
+.plt-meta{background:rgba(59,91,219,.2);color:#7B9BFF;}
+.plt-tiktok{background:rgba(255,255,255,.08);color:var(--text);}
+.plt-other{background:rgba(230,81,0,.15);color:#FF8A50;}
+.plt-kwai{background:rgba(255,165,0,.15);color:#FFA500;}
+
+/* ORGÂNICO */
+.organico-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.sheets-url-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;}
+.sheets-url-row input{flex:1;border:none;background:transparent;font-size:13px;color:var(--text);font-family:'Inter',sans-serif;outline:none;}
+.sheets-url-row input::placeholder{color:var(--muted);}
+.access-sheet-card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px;}
+.access-sheet-card .cfg-field{margin-bottom:8px;}
+.access-sheet-users{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.access-user-chip{display:flex;align-items:center;gap:4px;background:var(--border2);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;}
+.access-user-chip.selected{background:var(--gold);color:#000;}
+.access-sheet-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.access-sheet-header span{font-size:13px;font-weight:600;color:var(--gold);}
+.btn-remove-sheet{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0;}
+.organico-note{font-size:12px;color:var(--muted);margin-top:8px;}
+
+/* ADMIN */
+#admin-panel{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:28px;box-shadow:var(--shadow);}
+.adm-ttl{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;margin-bottom:6px;}
+.adm-sub{font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.6;}
+
+/* CONFIG CAMPANHAS */
+.camp-config-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;}
+.camp-cfg{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;position:relative;}
+.camp-cfg-num{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
+.cfg-field{margin-bottom:10px;}
+.cfg-field label{display:block;font-size:10px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px;}
+.cfg-field input,.cfg-field select{width:100%;padding:8px 11px;border-radius:7px;border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--text);font-family:'Inter',sans-serif;outline:none;transition:border-color .2s;}
+.cfg-field input:focus,.cfg-field select:focus{border-color:var(--gold);}
+.cfg-field select option{background:var(--surface);color:var(--text);}
+
+.adm-section{margin-bottom:28px;}
+.adm-section-ttl{font-size:12px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border2);}
+.adm-form{display:grid;grid-template-columns:1fr 1fr 1fr 1.5fr auto;gap:10px;align-items:end;background:var(--bg2);padding:16px;border-radius:10px;margin-bottom:16px;border:1px solid var(--border);}
+.af label{display:block;font-size:10px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px;}
+.af input{width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--text);font-family:'Inter',sans-serif;outline:none;transition:border-color .2s;}
+.af input:focus{border-color:var(--gold);}
+.af .hint{font-size:11px;color:var(--muted);margin-top:4px;}
+.btn-g{padding:9px 16px;border-radius:8px;border:none;background:var(--green);color:#fff;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:background .2s;}
+.btn-g:hover{background:var(--green-dark);}
+.btn-r{padding:5px 10px;border-radius:6px;border:1px solid rgba(240,90,90,.3);background:transparent;color:var(--danger);font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;}
+.btn-r:hover{background:rgba(240,90,90,.08);}
+.role-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--gold-light);color:var(--gold);}
+.empty{text-align:center;padding:50px 20px;color:var(--muted);}
+.empty .ico{font-size:36px;margin-bottom:10px;opacity:.4;}
+.empty h3{font-size:14px;font-weight:600;margin-bottom:5px;color:var(--text);}
+.empty p{font-size:13px;}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;opacity:0;transform:translateY(10px);transition:all .3s;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.green{background:var(--green);border-color:var(--green);color:#fff;}
+.toast.red{background:var(--danger);border-color:var(--danger);color:#fff;}
+
+@media(max-width:960px){
+  .kpi-grid{grid-template-columns:repeat(3,1fr);}
+  .camp-compare,.camp-header,.camp-config-grid{grid-template-columns:1fr;}
+  .charts-grid{grid-template-columns:1fr;}
+  .adm-form{grid-template-columns:1fr 1fr;}
+  .topbar{padding:0 14px;}
+  .main{padding:14px;}
+}
+
+/* ── MOBILE ─────────────────────────────────────── */
+@media(max-width:600px){
+  /* Prevent horizontal scroll */
+  html,body{overflow-x:hidden;width:100%;}
+  .main{padding:10px 10px;overflow-x:hidden;}
+
+  /* Topbar — stack dates below logo on mobile */
+  .topbar{height:auto;flex-wrap:wrap;padding:8px 12px;gap:6px;}
+  .t-left{flex:1;}
+  .logo{font-size:18px;}
+  .copa-pill{font-size:10px;padding:3px 8px;}
+  .t-right{width:100%;justify-content:space-between;}
+  #topbar-dates{flex-wrap:wrap;gap:4px;width:100%;}
+  .date-row{flex:1;min-width:0;font-size:12px;padding:5px 8px;}
+  .date-row input{font-size:12px;width:90px;}
+  .btn-gold{font-size:12px;padding:7px 12px;}
+  .btn-outline{font-size:12px;padding:7px 10px;}
+
+  /* Tabs — scrollable horizontal strip */
+  .tabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-wrap:nowrap;border-radius:10px;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{white-space:nowrap;padding:8px 14px;font-size:12px;}
+
+  /* Camp header — 1 col */
+  .camp-header{grid-template-columns:1fr !important;}
+  .camp-slot{padding:12px 14px;}
+
+  /* KPI grid — 2 col */
+  .kpi-grid{grid-template-columns:repeat(2,1fr) !important;gap:8px;}
+  .kpi-card{padding:12px 10px;}
+  .kpi-val{font-size:20px;}
+  .kpi-lbl{font-size:9px;}
+
+  /* Org cards — 2 col */
+  #org-cards{grid-template-columns:repeat(2,1fr) !important;gap:8px;}
+
+  /* Infl kpi strip — 2 col */
+  #infl-kpi-strip{grid-template-columns:repeat(2,1fr) !important;gap:8px;}
+
+  /* Camp compare — 1 col */
+  .camp-compare{grid-template-columns:1fr !important;}
+
+  /* Charts — 1 col */
+  .charts-grid{grid-template-columns:1fr;}
+
+  /* Tables — horizontal scroll */
+  .tbl-card [style*="overflow-x"],
+  div[style*="overflow-x"]{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  table{min-width:500px;}
+  #infl-table{min-width:900px;}
+  tbody td{padding:8px 10px;font-size:12px;}
+  thead th{padding:7px 10px;font-size:9px;}
+
+  /* Org sub-tabs */
+  #org-subtabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-wrap:nowrap;width:100%;}
+  #org-subtabs::-webkit-scrollbar{display:none;}
+  #org-subtabs .tab{white-space:nowrap;font-size:11px;padding:6px 10px;}
+
+  /* Admin form */
+  .adm-form{grid-template-columns:1fr !important;}
+  .camp-config-grid{grid-template-columns:1fr !important;}
+
+  /* Section labels */
+  .sec-lbl{font-size:10px;}
+
+  /* Login card */
+  .login-card{width:94vw;padding:32px 20px;}
+  .brand{font-size:30px;}
+
+  /* Podium — smaller on mobile */
+  #infl-podium > div, #org-podium > div{gap:6px !important;padding:0 4px !important;}
+
+  /* Filters wrap */
+  #tab-influenciadores > div:first-child{flex-direction:column;align-items:flex-start !important;}
+  #tab-influenciadores input,
+  #tab-influenciadores select{width:100% !important;}
+
+  /* Topbar dates full width */
+  #topbar-dates{display:flex !important;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px;}
+}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<!-- inflr dashboard v2.6 - 2026-06-17 -->
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="brand">inflr</div>
+    <div class="tagline">Acompanhamento Interno</div>
+    <div class="copa-badge">🏆 <span>Copa do Mundo 2026</span> 🏆</div>
+    <div class="login-title">Acesse seu painel</div>
+    <div class="login-sub">Entre com suas credenciais</div>
+    <div class="lf">
+      <label>Usuário</label><input type="text" id="inp-u" placeholder="seu.usuario" autocomplete="username">
+      <label>Senha</label><input type="password" id="inp-p" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="login-btn" id="lbtn" onclick="doLogin()">Entrar</button>
+    <div class="login-err" id="lerr"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="loading-ov" id="lov" style="display:none;"><div class="spinner"></div><div class="loading-txt" id="ltxt">Buscando dados...</div></div>
+  <div class="topbar">
+    <div class="t-left">
+      <div class="logo">inflr</div>
+      <div class="copa-pill">🏆 Copa 2026</div>
+    </div>
+    <div class="t-right">
+      <div id="topbar-dates" style="display:none;align-items:center;gap:6px;">
+        <div class="date-row">📅 <input type="date" id="ds"><span class="date-sep">→</span><input type="date" id="de"></div>
+        <button class="btn-gold" id="upd-btn" onclick="loadData()">Atualizar</button>
+      </div>
+      <button class="btn-outline" onclick="doLogout()" style="white-space:nowrap;">← Sair</button>
+    </div>
+  </div>
+  <div class="main">
+
+    <!-- ADMIN -->
+    <div id="admin-panel" style="display:none;">
+      <div class="adm-ttl">⚙️ Configurações do Painel Copa</div>
+      <div class="adm-sub">Configure as 3 campanhas monitoradas e gerencie os usuários com acesso ao painel.</div>
+
+      <!-- CONFIG CAMPANHAS -->
+      <div class="adm-section">
+        <div class="adm-section-ttl">🏆 Campanhas Monitoradas</div>
+        <div class="camp-config-grid">
+          <div class="camp-cfg" style="border-top:3px solid #F5C842;">
+            <div class="camp-cfg-num">Campanha 1</div>
+            <div class="cfg-field"><label>Nome de exibição</label><input id="c1-nome" placeholder="ex: Rede Ronaldo"></div>
+            <div class="cfg-field"><label>Palavra-chave (CAMPAIGN_NAME)</label><input id="c1-kw" placeholder="ex: REDE RONALDO"></div>
+            <div class="cfg-field"><label>Tipo de clique</label>
+              <select id="c1-click">
+                <option value="clicks_link">Cliques no Link</option>
+                <option value="clicks">Landing Page View</option>
+              </select>
+            </div>
+          </div>
+          <div class="camp-cfg" style="border-top:3px solid #1EC99B;">
+            <div class="camp-cfg-num">Campanha 2</div>
+            <div class="cfg-field"><label>Nome de exibição</label><input id="c2-nome" placeholder="ex: BraBet"></div>
+            <div class="cfg-field"><label>Palavra-chave (CAMPAIGN_NAME)</label><input id="c2-kw" placeholder="ex: BRA BET"></div>
+            <div class="cfg-field"><label>Tipo de clique</label>
+              <select id="c2-click">
+                <option value="clicks_link">Cliques no Link</option>
+                <option value="clicks">Landing Page View</option>
+              </select>
+            </div>
+          </div>
+          <div class="camp-cfg" style="border-top:3px solid #3B82F6;">
+            <div class="camp-cfg-num">Campanha 3</div>
+            <div class="cfg-field"><label>Nome de exibição</label><input id="c3-nome" placeholder="ex: Campanha C"></div>
+            <div class="cfg-field"><label>Palavra-chave (CAMPAIGN_NAME)</label><input id="c3-kw" placeholder="ex: PALAVRA CHAVE"></div>
+            <div class="cfg-field"><label>Tipo de clique</label>
+              <select id="c3-click">
+                <option value="clicks_link">Cliques no Link</option>
+                <option value="clicks">Landing Page View</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn-gold" onclick="saveCampConfig()">💾 Salvar Configuração</button>
+          <span style="font-size:12px;color:var(--muted);">Salvo localmente no navegador</span>
+        </div>
+      </div>
+
+      <!-- PLANILHAS COM CONTROLE DE ACESSO -->
+      <div class="adm-section">
+        <div class="adm-section-ttl">📊 Dados Orgânicos (Google Sheets)</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Publique cada aba: <strong style="color:var(--gold);">Arquivo → Compartilhar → Publicar na Web → selecione a aba → CSV → Publicar</strong>. Cole cada URL e defina quem pode ver.</div>
+        <div id="access-sheets-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px;"></div>
+        <button class="btn-gold" onclick="saveAccessSheets()">💾 Salvar Planilhas</button>
+        <div class="organico-note" style="margin-top:8px;">⚠️ Deixe em branco as abas que ainda não estão prontas.</div>
+      </div>
+
+      <!-- PLANILHA EXTRA (KWAI / outros) -->
+      <div class="adm-section">
+        <div class="adm-section-ttl">📥 Importar Dados de Planilha (Kwai / Extra)</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
+          Cole os dados no Google Sheets com as colunas obrigatórias:
+          <strong style="color:var(--gold);">date | platform | CAMPAIGN_NAME | AD_NAME | INFLUENCIADOR | IMPRESSIONS | CLICKS | THRUPLAY</strong>.
+          Publique como CSV: <strong style="color:var(--gold);">Arquivo → Compartilhar → Publicar na Web → selecione a aba → CSV → Publicar</strong>.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;background:var(--bg2);padding:16px;border-radius:10px;border:1px solid var(--border);">
+          <div class="af">
+            <label>URL da Planilha de Mídia Extra (CSV publicado)</label>
+            <input id="sheets-data-url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" style="width:100%;">
+          </div>
+          <button class="btn-g" onclick="saveSheetsDataUrl()" style="height:38px;white-space:nowrap;">💾 Salvar URL</button>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+          <button class="btn-gold" onclick="testSheetsDataUrl()" style="font-size:12px;padding:7px 14px;">🔍 Testar Planilha</button>
+          <span id="sheets-data-status" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+
+      <!-- USUÁRIOS -->
+      <div class="adm-section">
+        <div class="adm-section-ttl">👥 Usuários</div>
+        <div class="adm-form">
+          <div class="af"><label>Usuário</label><input id="nu" placeholder="ex: interno01"></div>
+          <div class="af"><label>Senha</label><input type="password" id="np" placeholder="senha segura"></div>
+          <div class="af"><label>Nome</label><input id="nc" placeholder="ex: Time Copa"></div>
+          <div class="af"><label>Acesso (palavras-chave)</label><input id="nk" placeholder="ex: REDE, BRA BET"><div class="hint">Vazio = vê todas.</div></div>
+          <div class="af"><label>Excluir (palavras-chave)</label><input id="nexclude" placeholder="ex: INFLR"><div class="hint">Oculta campanhas com estas palavras.</div></div>
+          <button class="btn-g" onclick="adminAdd()" style="height:38px;">+ Adicionar</button>
+        </div>
+        <table><thead><tr><th>Usuário</th><th>Nome</th><th>Acesso</th><th>Excluir</th><th>Perfil</th><th></th></tr></thead><tbody id="adm-tbody"></tbody></table>
+      </div><!-- fim adm-section usuarios -->
+    </div><!-- fim admin-panel -->
+
+    <!-- DASHBOARD -->
+    <div id="dash-section" style="display:none;">
+      <!-- Campanhas configuradas -->
+      <div class="camp-header" id="camp-header"></div>
+
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('overview',this)">Visão Geral</button>
+        <button class="tab" onclick="switchTab('comparativo',this)">Por Campanha</button>
+        <button class="tab" onclick="switchTab('influenciadores',this)">Influenciadores</button>
+        <button class="tab" onclick="switchTab('organico',this)">Dados Orgânicos</button>
+      </div>
+
+      <!-- OVERVIEW -->
+      <div id="tab-overview">
+        <div class="sec-lbl">KPIs Consolidados do Período</div>
+        <div class="kpi-grid" id="kpi-grid"></div>
+        <div class="sec-lbl" style="margin-top:24px;">Todas as Campanhas</div>
+        <div class="tbl-card">
+          <div class="tbl-top"><div class="tbl-ttl">Análise por Campanha</div></div>
+          <div style="overflow-x:auto;"><table><thead><tr><th>Campanha</th><th>Plataforma</th><th>Impressões</th><th>Cliques</th><th>CTR</th><th>ThruPlay</th><th>VTR</th></tr></thead><tbody id="c-tbody"></tbody></table></div>
+        </div>
+      </div>
+
+      <!-- COMPARATIVO POR CAMPANHA -->
+      <div id="tab-comparativo" style="display:none;">
+        <div class="sec-lbl" id="lbl-comparativo">Comparativo das Campanhas</div>
+        <div class="camp-compare" id="camp-compare"></div>
+        <div class="sec-lbl" style="margin-top:24px;">Influenciadores por Campanha</div>
+        <div id="influenciadores-section"></div>
+      </div>
+
+      <!-- INFLUENCIADORES -->
+      <div id="tab-influenciadores" style="display:none;">
+
+        <!-- Filtros -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+          <div>
+            <div class="sec-lbl" style="margin:0 0 2px;">🏆 Ranking de Influenciadores</div>
+            <div style="font-size:12px;color:var(--muted);">Clique nas colunas para reordenar</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input id="infl-search" placeholder="🔍 Buscar influenciador..." style="padding:8px 13px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;width:210px;" oninput="filterInflTable()">
+            <select id="infl-camp-filter" style="padding:8px 13px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;cursor:pointer;" onchange="filterInflTable()">
+              <option value="">Todas as campanhas</option>
+            </select>
+            <select id="infl-metric" style="padding:8px 13px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;cursor:pointer;" onchange="changeInflMetric(this.value)">
+              <option value="impressions">Ranking por Impressões</option>
+              <option value="clicks_link">Ranking por PG View</option>
+              <option value="vtr">Ranking por VTR</option>
+              <option value="thruplay">Ranking por ThruPlay</option>
+              <option value="views100">Ranking por Views 100%</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Pódio Top 3 -->
+        <div id="infl-podium" style="margin-bottom:24px;"></div>
+
+        <!-- KPI strip -->
+        <div id="infl-kpi-strip" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px;"></div>
+
+        <!-- Tabela ranking -->
+        <div class="tbl-card">
+          <div class="tbl-top">
+            <div class="tbl-ttl">📋 Ranking Completo</div>
+            <span id="infl-count" style="font-size:12px;color:var(--muted);background:var(--bg2);padding:3px 10px;border-radius:20px;"></span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table id="infl-table">
+              <thead><tr id="infl-thead"></tr></thead>
+              <tbody id="infl-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ORGÂNICO -->
+      <div id="tab-organico" style="display:none;">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+          <div>
+            <div class="sec-lbl" style="margin:0 0 2px;">📊 Dados Orgânicos</div>
+            <div style="font-size:12px;color:var(--muted);">Importado do Google Sheets — atualizado ao abrir a aba</div>
+          </div>
+          <button class="btn-gold" onclick="loadOrganico()">↻ Atualizar</button>
+        </div>
+
+        <!-- Cards resumo por campanha -->
+        <div id="org-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;"></div>
+
+        <!-- Pódio impressões orgânicas -->
+        <div id="org-podium-wrap" style="display:none;margin-bottom:24px;">
+          <div class="sec-lbl" style="margin-bottom:12px;">🏆 Top Influenciadores — Impressões Orgânicas</div>
+          <div id="org-podium"></div>
+        </div>
+
+        <!-- Sub-abas das planilhas -->
+        <div style="display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:16px;width:fit-content;" id="org-subtabs"></div>
+
+        <!-- Tabela -->
+        <div class="tbl-card" id="org-tbl-card">
+          <div class="tbl-top">
+            <div class="tbl-ttl" id="org-tbl-title">📋 Detalhes</div>
+            <span id="org-tbl-total" style="font-size:12px;color:var(--muted);background:var(--bg2);padding:3px 10px;border-radius:20px;"></span>
+          </div>
+          <div style="overflow-x:auto;"><table><thead id="org-head"></thead><tbody id="org-body"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+<script>
+const API='';
+let USER=null,TOKEN=null,allCRows=[],allInflRows=[],CH={};
+let _inflSortKey='impressions',_inflSortDir=-1;
+const $=id=>document.getElementById(id);
+const CAMP_COLORS=['#F5C842','#1EC99B','#3B82F6'];
+const CLICK_LABELS={clicks_link:'Cliques no Link',clicks:'Landing Page View'};
+
+function fmt(n){if(n==null)return'—';n=Number(n);if(isNaN(n))return'—';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1000)return(n/1000).toFixed(1)+'K';return n.toLocaleString('pt-BR');}
+function fmtP(n){return(n==null||isNaN(Number(n)))?'—':Number(n).toFixed(2)+'%';}
+function today(){return new Date().toISOString().split('T')[0];}
+function mStart(){const d=new Date();d.setDate(1);return d.toISOString().split('T')[0];}
+function loading(show,txt='Buscando dados...'){$('lov').style.display=show?'flex':'none';$('ltxt').textContent=txt;}
+function toast(msg,type='green'){const t=$('toast');t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className='toast',3200);}
+
+// CONFIG CAMPANHAS — armazenada no backend, cache local apenas para performance
+let _campConfigCache = null;
+
+function getCampConfig(){
+  // Retorna o cache se disponível, senão default vazio (será preenchido por loadConfig)
+  if(_campConfigCache) return _campConfigCache;
+  return [
+    {nome:'Campanha 1',kw:'',click:'clicks'},
+    {nome:'Campanha 2',kw:'',click:'clicks'},
+    {nome:'Campanha 3',kw:'',click:'clicks'},
+  ];
+}
+
+async function loadConfig(){
+  try{
+    const data = await apiFetch('/api/config');
+    if(data && data.camps){
+      _campConfigCache = data.camps;
+      return data;
     }
+    return data || {camps:[{nome:'Campanha 1',kw:'',click:'clicks'},{nome:'Campanha 2',kw:'',click:'clicks'},{nome:'Campanha 3',kw:'',click:'clicks'}], sheets_url:'', sheets_urls:{}};
+  }catch(e){
+    console.warn('Erro ao carregar config:',e);
+    return null;
+  }
+}
 
-def _filter_sheet(rows, user, start, end):
-    out = []
-    for r in rows:
-        if not r or r["date"] < start or r["date"] > end:
-            continue
-        camp = (r["CAMPAIGN_NAME"] or "").upper()
-        if user["role"] != "admin":
-            kws  = [k.strip().upper() for k in user.get("campaigns", []) if k.strip()]
-            excl = [k.strip().upper() for k in user.get("exclude", []) if k.strip()]
-            if kws:
-                matched = any(
-                    all(p in camp for p in kw.split("+")) if "+" in kw else kw in camp
-                    for kw in kws
-                )
-                if not matched:
-                    continue
-            if excl and any(e in camp for e in excl):
-                continue
-        out.append(r)
-    return out
+async function saveCampConfig(){
+  const cfg=[
+    {nome:$('c1-nome').value.trim(),kw:$('c1-kw').value.trim().toUpperCase(),click:$('c1-click').value},
+    {nome:$('c2-nome').value.trim(),kw:$('c2-kw').value.trim().toUpperCase(),click:$('c2-click').value},
+    {nome:$('c3-nome').value.trim(),kw:$('c3-kw').value.trim().toUpperCase(),click:$('c3-click').value},
+  ];
+  const sheets_data_url = ($('sheets-data-url')?.value||'').trim();
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps:cfg, sheets_url:'', sheets_data_url
+  })});
+  if(res && res.ok){
+    _campConfigCache = cfg;
+    toast('Configuração salva!');
+  } else {
+    toast(res?.error||'Erro ao salvar.','red');
+  }
+}
 
-def _get_sheet_rows(user, start, end):
-    try:
-        conn = get_db(); cur = conn.cursor()
-        cur.execute("SELECT value FROM app_config WHERE key='sheets_data_url'")
-        row = cur.fetchone()
-        cur.close(); conn.close()
-        if not row or not row[0] or not row[0].strip():
-            return []
-        raw  = _fetch_csv(row[0])
-        norm = [_normalize(r) for r in raw]
-        return _filter_sheet([r for r in norm if r], user, start, end)
-    except Exception as e:
-        print(f"[sheets] erro: {e}")
-        return []
+async function saveSheetsDataUrl(){
+  const url = ($('sheets-data-url')?.value||'').trim();
+  const cfg = _campConfigCache || getCampConfig();
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps: cfg, sheets_url: '', sheets_data_url: url
+  })});
+  if(res && res.ok) toast('URL da planilha salva!');
+  else toast(res?.error||'Erro ao salvar.','red');
+}
 
-# ── MERGE HELPERS ─────────────────────────────────────────────
+async function testSheetsDataUrl(){
+  const statusEl = $('sheets-data-status');
+  if(statusEl) statusEl.textContent = '⏳ Testando...';
+  const url = ($('sheets-data-url')?.value||'').trim();
+  if(!url){ if(statusEl) statusEl.textContent='⚠️ URL vazia.'; return; }
+  // Testa buscando dados do mês atual
+  const today = new Date().toISOString().split('T')[0];
+  const start = today.substring(0,7)+'-01';
+  const res = await apiFetch('/api/data?type=kpi&start_date='+start+'&end_date='+today);
+  if(res && !res.error){
+    const imp = Number(res.impressions||0);
+    if(statusEl) statusEl.textContent = imp > 0
+      ? '✅ OK! '+imp.toLocaleString('pt-BR')+' impressões encontradas (BQ + planilha)'
+      : '⚠️ URL salva, mas nenhuma impressão no período. Verifique os dados.';
+  } else {
+    if(statusEl) statusEl.textContent = '❌ Erro: '+(res?.error||'falha na requisição');
+  }
+}
 
-def _sheet_kpi(rows):
-    imp = clk = clkl = tp = v100 = 0
-    for r in rows:
-        imp  += r["IMPRESSIONS"]
-        clk  += r["CLICKS"]
-        clkl += r["CLICKS_LINK"]
-        tp   += r["THRUPLAY"]
-        v100 += r["VIEWS100"]
-    return {"impressions": imp, "clicks": clk, "clicks_link": clkl,
-            "thruplay": tp, "views100": v100,
-            "ctr":  (clkl / imp * 100) if imp else 0,
-            "vtr":  (tp   / imp * 100) if imp else 0}
+async function loadCampConfigToForm(){
+  const data = await loadConfig();
+  if(!data) return;
+  const cfg = data.camps || getCampConfig();
+  ['c1','c2','c3'].forEach((id,i)=>{
+    $(id+'-nome').value=cfg[i]?.nome||'';
+    $(id+'-kw').value=cfg[i]?.kw||'';
+    $(id+'-click').value=cfg[i]?.click||'clicks';
+  });
+  // Load 4 sheets URLs
+  const su = data.sheets_urls||{};
 
-def _merge_kpi(bq, srows):
-    if not srows: return bq
-    s = _sheet_kpi(srows)
-    m = dict(bq)
-    for k in ["impressions","clicks","clicks_link","thruplay","views100"]:
-        m[k] = (m.get(k) or 0) + s.get(k, 0)
-    imp = m.get("impressions") or 0
-    m["ctr"] = (m["clicks_link"] / imp * 100) if imp else 0
-    m["vtr"] = (m["thruplay"]    / imp * 100) if imp else 0
-    return m
+  // Carrega URL da planilha extra
+  const sduEl = $('sheets-data-url');
+  if(sduEl && data?.sheets_data_url) sduEl.value = data.sheets_data_url;
 
-def _merge_timeseries(bq_list, srows):
-    if not srows: return bq_list
-    smap = {}
-    for r in srows:
-        d = r["date"]
-        if d not in smap:
-            smap[d] = {"date":d,"impressions":0,"clicks":0,"thruplay":0,"views100":0}
-        smap[d]["impressions"] += r["IMPRESSIONS"]
-        smap[d]["clicks"]      += r["CLICKS_LINK"]
-        smap[d]["thruplay"]    += r["THRUPLAY"]
-        smap[d]["views100"]    += r["VIEWS100"]
-    bmap = {r["date"]: r for r in bq_list}
-    for d, s in smap.items():
-        if d in bmap:
-            bmap[d]["impressions"] += s["impressions"]
-            bmap[d]["clicks"]      += s["clicks"]
-            bmap[d]["thruplay"]    += s["thruplay"]
-            bmap[d]["views100"]    += s["views100"]
-            imp = bmap[d]["impressions"]
-            bmap[d]["ctr"] = (bmap[d]["clicks"] / imp * 100) if imp else 0
-            bmap[d]["vtr"] = (bmap[d]["thruplay"] / imp * 100) if imp else 0
-        else:
-            imp = s["impressions"]
-            s["ctr"] = (s["clicks"] / imp * 100) if imp else 0
-            s["vtr"] = (s["thruplay"] / imp * 100) if imp else 0
-            bmap[d] = s
-    return sorted(bmap.values(), key=lambda x: x["date"])
+  // Avisa admin se a config ainda não foi salva no servidor
+  const savedOnServer = cfg.some(c=>c.kw && c.kw.trim());
+  const localCamps = localStorage.getItem('copa_camps');
+  const hasLocal = localCamps && JSON.parse(localCamps).some(c=>c.kw && c.kw.trim());
+  if(!savedOnServer && hasLocal){
+    toast('⚠️ Config detectada no navegador. Clique em "Salvar Configuração" para publicar para todos os clientes!','red');
+  }
+}
 
-def _merge_by_campaign(bq_list, srows):
-    if not srows: return bq_list
-    combined = {(r["platform"], r["CAMPAIGN_NAME"]): dict(r) for r in bq_list}
-    for r in srows:
-        key = (r["platform"], r["CAMPAIGN_NAME"])
-        if key not in combined:
-            combined[key] = {"platform": r["platform"], "CAMPAIGN_NAME": r["CAMPAIGN_NAME"],
-                             "impressions":0,"clicks":0,"clicks_link":0,"thruplay":0,"views100":0,"ctr":0,"vtr":0}
-        for f in ["impressions","clicks","clicks_link","thruplay","views100"]:
-            combined[key][f] = (combined[key].get(f) or 0) + (r.get(f.upper()) or r.get(f) or 0)
-    result = sorted(combined.values(), key=lambda x: -(x.get("impressions") or 0))
-    for row in result:
-        imp = row.get("impressions") or 0
-        row["ctr"] = (row.get("clicks_link",0) / imp * 100) if imp else 0
-        row["vtr"] = (row.get("thruplay",0)    / imp * 100) if imp else 0
-    return result
+// ── SHEETS / ORGÂNICO ────────────────────────────────────────
+const ORG_SHEETS = [
+  {id:'florida', label:'Florida Rental Car', icon:'🚗', color:'#1EC99B'},
+  {id:'bra',     label:'BRA.BET',            icon:'🎰', color:'#EC4899'},
+  {id:'rr',      label:'Rede Ronaldo',       icon:'⚽', color:'#3B82F6'},
+];
+let _orgData       = {};
+let _orgActive     = null;
 
-def _merge_by_influencer(bq_list, srows):
-    if not srows: return bq_list
-    combined = {(r["influenciador"], r["platform"], r["CAMPAIGN_NAME"]): dict(r) for r in bq_list}
-    for r in srows:
-        infl = (r["INFLUENCIADOR"] or r["AD_NAME"] or "Sem Influenciador").strip()
-        infl = re.sub(r'\s*-\s*(BR|US|PT|MX|AR|CL|CO)\s*(C\d+)?\s*$', '', infl)
-        key = (infl, r["platform"], r["CAMPAIGN_NAME"])
-        if key not in combined:
-            combined[key] = {"influenciador":infl,"platform":r["platform"],
-                             "CAMPAIGN_NAME":r["CAMPAIGN_NAME"],
-                             "impressions":0,"clicks_link":0,"clicks":0,"thruplay":0,"views100":0}
-        combined[key]["impressions"]  += r["IMPRESSIONS"]
-        combined[key]["clicks_link"]  += r["CLICKS_LINK"]
-        combined[key]["clicks"]       += r["CLICKS"]
-        combined[key]["thruplay"]     += r["THRUPLAY"]
-        combined[key]["views100"]     += r["VIEWS100"]
-    result = sorted(combined.values(), key=lambda x: -(x.get("impressions") or 0))
-    for row in result:
-        imp = row.get("impressions") or 0
-        row["ctr_link"]  = (row.get("clicks_link",0) / imp * 100) if imp else 0
-        row["ctr_click"] = (row.get("clicks",0)      / imp * 100) if imp else 0
-        row["vtr"]       = (row.get("thruplay",0)    / imp * 100) if imp else 0
-    return result
+function parseCSVLine(line){
+  const result=[];let cur='';let inQ=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){inQ=!inQ;}
+    else if(ch===','&&!inQ){result.push(cur.trim());cur='';}
+    else{cur+=ch;}
+  }
+  result.push(cur.trim());
+  return result;
+}
 
-# ── BIGQUERY QUERIES ──────────────────────────────────────────
+async function fetchCSV(url){
+  if(!url||!url.trim()) return null;
+  try{
+    const res=await fetch(url.trim());
+    const text=await res.text();
+    const lines=text.trim().split('\n').map(parseCSVLine);
+    return lines.length<2?null:lines;
+  }catch(e){return null;}
+}
 
-def bq_rows(query):
-    return [dict(r) for r in get_bq().query(query).result()]
+async function saveAndTestSheets(){
+  const cfg=[
+    {nome:$('c1-nome').value.trim(),kw:$('c1-kw').value.trim().toUpperCase(),click:$('c1-click').value},
+    {nome:$('c2-nome').value.trim(),kw:$('c2-kw').value.trim().toUpperCase(),click:$('c2-click').value},
+    {nome:$('c3-nome').value.trim(),kw:$('c3-kw').value.trim().toUpperCase(),click:$('c3-click').value},
+  ];
+  const sheets_urls={
+  };
+  const res=await apiFetch('/api/config',{method:'POST',body:JSON.stringify({camps:cfg,sheets_url:sheets_urls.geral,sheets_urls})});
+  if(res&&res.ok){_campConfigCache=cfg;toast('URLs salvas!');}
+  else toast(res?.error||'Erro ao salvar.','red');
+}
 
-def get_kpi(f, s, e):
-    q = f"""
-    SELECT SUM(COALESCE(IMPRESSIONS,0)) AS impressions, SUM(COALESCE(CLICKS,0)) AS clicks,
-        SUM(COALESCE(CLICKS_LINK,0)) AS clicks_link, SUM(COALESCE(THRUPLAY,0)) AS thruplay,
-        SUM(COALESCE(VIEWS6,0)) AS views6, SUM(COALESCE(VIEWS25,0)) AS views25,
-        SUM(COALESCE(VIEWS50,0)) AS views50, SUM(COALESCE(VIEWS75,0)) AS views75,
-        SUM(COALESCE(VIEWS100,0)) AS views100,
-        SUM(COALESCE(total_comments,0)) AS comments, SUM(COALESCE(total_reacoes,0)) AS reactions,
-        SUM(COALESCE(total_salvamentos,0)) AS saves,
-        SUM(COALESCE(total_compartilhamento,0)) AS shares,
-        SAFE_DIVIDE(SUM(COALESCE(CLICKS,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS ctr,
-        SAFE_DIVIDE(SUM(COALESCE(THRUPLAY,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS vtr
-    FROM {BQ_TABLE_SAFE}
-    WHERE date BETWEEN '{s}' AND '{e}' AND {f}"""
-    rows = bq_rows(q); return rows[0] if rows else {}
+// ── ACCESS SHEETS ─────────────────────────────────────────────
+let _accessSheets = []; // [{nome, url, users:[]}]
+let _allUsers = []; // lista de usuários para mostrar chips
 
-def get_timeseries(f, s, e):
-    q = f"""
-    SELECT CAST(date AS STRING) AS date,
-        SUM(COALESCE(IMPRESSIONS,0)) AS impressions, SUM(COALESCE(CLICKS,0)) AS clicks,
-        SUM(COALESCE(THRUPLAY,0)) AS thruplay, SUM(COALESCE(VIEWS25,0)) AS views25,
-        SUM(COALESCE(VIEWS50,0)) AS views50, SUM(COALESCE(VIEWS75,0)) AS views75,
-        SUM(COALESCE(VIEWS100,0)) AS views100,
-        SUM(COALESCE(total_comments,0)) AS comments, SUM(COALESCE(total_reacoes,0)) AS reactions,
-        SUM(COALESCE(total_salvamentos,0)) AS saves, SUM(COALESCE(total_compartilhamento,0)) AS shares,
-        SAFE_DIVIDE(SUM(COALESCE(CLICKS,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS ctr,
-        SAFE_DIVIDE(SUM(COALESCE(THRUPLAY,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS vtr
-    FROM {BQ_TABLE_SAFE}
-    WHERE date BETWEEN '{s}' AND '{e}' AND {f}
-    GROUP BY date ORDER BY date ASC"""
-    return bq_rows(q)
+function renderAccessSheetsList(){
+  const el = $('access-sheets-list');
+  if(!el) return;
+  if(!_accessSheets.length){
+    _accessSheets = [
+      {nome:'Florida Rental Car', url:'', users:[]},
+      {nome:'BRA.BET',            url:'', users:[]},
+      {nome:'Rede Ronaldo (RR)',  url:'', users:[]},
+      {nome:'Rede Ronaldo',       url:'', users:[]},
+      {nome:'Florida Rental Car', url:'', users:[]},
+      {nome:'BRABET',             url:'', users:[]},
+    ];
+  }
+  el.innerHTML = _accessSheets.map((s,i)=>`
+    <div class="access-sheet-card">
+      <div class="access-sheet-header">
+        <span>📋 Planilha ${i+1}</span>
+        <button class="btn-remove-sheet" onclick="removeAccessSheet(${i})" title="Remover">✕</button>
+      </div>
+      <div class="cfg-field"><label>Nome</label><input id="as-nome-${i}" value="${s.nome||''}" placeholder="ex: Rede Ronaldo"></div>
+      <div class="cfg-field"><label>URL (CSV publicado)</label><input id="as-url-${i}" value="${s.url||''}" placeholder="...pub?gid=XXXX&output=csv"></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Usuários com acesso (clique para selecionar):</div>
+      <div class="access-sheet-users">
+        ${_allUsers.filter(u=>u.role!=='admin').map(u=>`
+          <div class="access-user-chip ${s.users.includes(u.username)?'selected':''}"
+               onclick="toggleAccessUser(${i},'${u.username}')">
+            ${u.username}${u.client&&u.client!==u.username?' ('+u.client+')':''}
+          </div>
+        `).join('')}
+        ${_allUsers.filter(u=>u.role!=='admin').length===0?'<span style="color:var(--muted);font-size:12px;">Nenhum usuário cadastrado</span>':''}
+      </div>
+    </div>
+  `).join('') + `<button class="btn-g" onclick="addAccessSheet()" style="margin-top:4px;">+ Adicionar Planilha</button>`;
+}
 
-def get_by_campaign(f, s, e):
-    q = f"""
-    SELECT platform, CAMPAIGN_NAME,
-        SUM(COALESCE(IMPRESSIONS,0)) AS impressions, SUM(COALESCE(CLICKS,0)) AS clicks,
-        SUM(COALESCE(CLICKS_LINK,0)) AS clicks_link, SUM(COALESCE(THRUPLAY,0)) AS thruplay,
-        SUM(COALESCE(VIEWS25,0)) AS views25, SUM(COALESCE(VIEWS50,0)) AS views50,
-        SUM(COALESCE(VIEWS75,0)) AS views75, SUM(COALESCE(VIEWS100,0)) AS views100,
-        SAFE_DIVIDE(SUM(COALESCE(CLICKS,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS ctr,
-        SAFE_DIVIDE(SUM(COALESCE(THRUPLAY,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS vtr
-    FROM {BQ_TABLE_SAFE}
-    WHERE date BETWEEN '{s}' AND '{e}' AND {f}
-    GROUP BY platform, CAMPAIGN_NAME ORDER BY impressions DESC"""
-    return bq_rows(q)
+function toggleAccessUser(sheetIdx, username){
+  const s = _accessSheets[sheetIdx];
+  if(s.users.includes(username)) s.users = s.users.filter(u=>u!==username);
+  else s.users.push(username);
+  renderAccessSheetsList();
+}
 
-def get_by_influencer(f, s, e):
-    q = f"""
-    SELECT TRIM(REGEXP_REPLACE(
-            COALESCE(NULLIF(TRIM(INFLUENCIADOR),''),NULLIF(TRIM(AD_NAME),''),'Sem Influenciador'),
-            r'\\s*-\\s*(BR|US|PT|MX|AR|CL|CO)\\s*(C\\d+)?\\s*$','')) AS influenciador,
-        platform, CAMPAIGN_NAME,
-        SUM(COALESCE(IMPRESSIONS,0)) AS impressions, SUM(COALESCE(CLICKS_LINK,0)) AS clicks_link,
-        SUM(COALESCE(CLICKS,0)) AS clicks, SUM(COALESCE(THRUPLAY,0)) AS thruplay,
-        SUM(COALESCE(VIEWS25,0)) AS views25, SUM(COALESCE(VIEWS50,0)) AS views50,
-        SUM(COALESCE(VIEWS75,0)) AS views75, SUM(COALESCE(VIEWS100,0)) AS views100,
-        SUM(COALESCE(total_comments,0)) AS comments, SUM(COALESCE(total_reacoes,0)) AS reactions,
-        SUM(COALESCE(total_salvamentos,0)) AS saves, SUM(COALESCE(total_compartilhamento,0)) AS shares,
-        SAFE_DIVIDE(SUM(COALESCE(CLICKS_LINK,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS ctr_link,
-        SAFE_DIVIDE(SUM(COALESCE(CLICKS,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS ctr_click,
-        SAFE_DIVIDE(SUM(COALESCE(THRUPLAY,0)),NULLIF(SUM(COALESCE(IMPRESSIONS,0)),0))*100 AS vtr
-    FROM {BQ_TABLE_SAFE}
-    WHERE date BETWEEN '{s}' AND '{e}' AND {f}
-    GROUP BY influenciador, platform, CAMPAIGN_NAME ORDER BY impressions DESC"""
-    return bq_rows(q)
+function addAccessSheet(){
+  _accessSheets.push({nome:'', url:'', users:[]});
+  renderAccessSheetsList();
+}
 
-# ── HANDLER ───────────────────────────────────────────────────
+function removeAccessSheet(idx){
+  _accessSheets.splice(idx,1);
+  renderAccessSheetsList();
+}
 
-class handler(BaseHTTPRequestHandler):
+async function saveAccessSheets(){
+  _accessSheets = _accessSheets.map((s,i)=>({
+    nome:  $(`as-nome-${i}`)?.value.trim()||s.nome,
+    url:   $(`as-url-${i}`)?.value.trim()||s.url,
+    users: s.users,
+  }));
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps: _campConfigCache||[{nome:'',kw:'',click:'clicks_link'},{nome:'',kw:'',click:'clicks_link'},{nome:'',kw:'',click:'clicks_link'}],
+    sheets_url: '',
+    sheets_urls: {},
+    access_sheets: _accessSheets,
+  })});
+  if(res&&res.ok) toast('Planilhas salvas!');
+  else toast(res?.error||'Erro ao salvar.','red');
+}
 
-    def do_OPTIONS(self):
-        self.send_response(200)
-        for k, v in cors_headers().items(): self.send_header(k, v)
-        self.end_headers()
+async function loadOrganico(silent=false){
+  const data=await loadConfig();
+  const accessSheets = (data?.access_sheets||[]).filter(s=>{
+    if(!s.url) return false;
+    if(!s.users||!s.users.length) return true; // sem restrição = todos veem
+    return USER?.role==='admin' || s.users.includes(USER?.username);
+  });
 
-    def _send(self, resp):
-        self.send_response(resp["statusCode"])
-        for k, v in resp["headers"].items(): self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(resp["body"].encode())
+  const hasAny = accessSheets.length>0;
+  if(!hasAny){
+    $('org-cards').innerHTML='';
+    $('org-podium-wrap').style.display='none';
+    $('org-subtabs').innerHTML='';
+    $('org-head').innerHTML='';
+    $('org-body').innerHTML=`<tr><td colspan="5"><div class="empty"><div class="ico">📊</div><h3>URLs não configuradas</h3><p>Acesse o painel de admin e configure as URLs das planilhas.</p></div></td></tr>`;
+    return;
+  }
 
-    def do_GET(self):
-        try:
-            user   = get_token_from_header(self.headers)
-            parsed = urlparse(self.path)
-            params = parse_qs(parsed.query)
-            start  = params.get("start_date", [""])[0]
-            end    = params.get("end_date",   [""])[0]
-            type_  = params.get("type",       ["kpi"])[0]
+  if(!silent) loading(true,'Importando planilhas...');
+  try{
+    const results=await Promise.all(accessSheets.map(s=>fetchCSV(s.url)));
+    _orgData={};
+    accessSheets.forEach((s,i)=>{if(results[i])_orgData['access_'+i]=results[i];});
+    window._activeAccessSheets = accessSheets.map((s,i)=>({
+      id:'access_'+i, label:s.nome||'Planilha '+(i+1), icon:'📋', color:'#8B5CF6'
+    }));
+    renderOrgCards();
+    renderOrgPodium();
+    renderOrgSubTabs();
+    const _sheets=getAllSheets().filter(s=>_orgData[s.id]);
+    showOrgSheet(_sheets.length===1?_sheets[0].id:'all');
+  }finally{if(!silent) loading(false);}
+}
 
-            if not start or not end:
-                return self._send(error_response("Parâmetros start_date e end_date obrigatórios."))
+function getAllSheets(){
+  return window._activeAccessSheets||[];
+}
 
-            camp_filter = build_campaign_filter(user)
-            srows       = _get_sheet_rows(user, start, end)
+function fmtOrgNum(v){
+  if(!v||v==='-'||v.toLowerCase()==='pendente') return v||'—';
+  const n=parseFloat(v.replace(/\./g,'').replace(',','.'));
+  if(isNaN(n)) return v;
+  if(n>=1e6) return (n/1e6).toFixed(2).replace('.',',')+'M';
+  if(n>=1e3) return (n/1000).toFixed(1).replace('.',',')+'K';
+  return v;
+}
+function parseOrgNum(v){
+  if(!v||v==='-') return 0;
+  const s=String(v).trim().toLowerCase();
+  if(s==='pendente'||s==='') return 0;
+  if(s.endsWith('m')) return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.'))*1000000;
+  if(s.endsWith('k')) return parseFloat(s.replace(/[^\d.,]/g,'').replace(',','.'))*1000;
+  if(/\d\.\d{3}/.test(s)&&s.includes(',')) return parseFloat(s.replace(/\./g,'').replace(',','.'))||0;
+  if(/\d\.\d{3}/.test(s)&&!s.includes(',')) return parseFloat(s.replace(/\./g,''))||0;
+  return parseFloat(s.replace(',','.').replace(/[^\d.]/g,''))||0;
+}
 
-            if type_ == "kpi":
-                result = _merge_kpi(get_kpi(camp_filter, start, end), srows)
-            elif type_ == "timeseries":
-                result = {"rows": _merge_timeseries(get_timeseries(camp_filter, start, end), srows)}
-            elif type_ == "by_campaign":
-                result = {"rows": _merge_by_campaign(get_by_campaign(camp_filter, start, end), srows)}
-            elif type_ == "by_influencer":
-                result = {"rows": _merge_by_influencer(get_by_influencer(camp_filter, start, end), srows)}
-            else:
-                return self._send(error_response("Tipo inválido."))
+function getSheetTotals(rows){
+  if(!rows) return {imp:0,view:0};
+  const headers=rows[0];
+  const data=rows.slice(1).filter(r=>r.some(c=>c));
 
-            self._send(json_response(result))
+  // Strategy 1: find a cell with "total geral" or "total" anywhere in any row/col of headers
+  // Pattern: cell with "total geral" → next cell = impressões, cell after = views
+  for(let ri=0; ri<Math.min(rows.length,5); ri++){
+    const row=rows[ri];
+    for(let ci=0; ci<row.length; ci++){
+      if(/total\s*geral/i.test(row[ci]||'')){
+        const imp  = parseOrgNum(row[ci+1]||'0');
+        const view = parseOrgNum(row[ci+2]||'0');
+        if(imp>0) return {imp, view};
+      }
+    }
+  }
 
-        except (PermissionError, jwt.ExpiredSignatureError) as e:
-            self._send(error_response(str(e), 401))
-        except Exception as e:
-            tb = traceback.format_exc()
-            self._send(error_response(f"ERRO: {str(e)} | TRACEBACK: {tb}", 500))
+  // Strategy 2: header cell "TOTAL IMPRESSÕES" or "TOTAL VIEWS" (Dados Gerais col F/G)
+  const idxTotImp  = headers.findIndex(h=>/total.+impress|impress.+total/i.test(h));
+  const idxTotView = headers.findIndex(h=>/total.+view|view.+total/i.test(h));
+  if(idxTotImp>=0){
+    const val=data.find(r=>r[idxTotImp]&&r[idxTotImp]!=='-'&&r[idxTotImp].trim()!=='');
+    if(val) return {
+      imp:  parseOrgNum(val[idxTotImp]||'0'),
+      view: idxTotView>=0 ? parseOrgNum(val[idxTotView]||'0') : 0
+    };
+  }
 
-app = handler
+  // Strategy 3: TOTAL row in Influenciador column
+  const idxInfl= headers.findIndex(h=>/influenc/i.test(h));
+  const idxImp = headers.findIndex(h=>/^impress/i.test(h));
+  const idxView= headers.findIndex(h=>/^view/i.test(h));
+  const totalRow=data.find(r=>/^total$/i.test((r[Math.max(idxInfl,0)]||'').trim()));
+  if(totalRow) return {
+    imp:  idxImp>=0  ? parseOrgNum(totalRow[idxImp]||'0')  : 0,
+    view: idxView>=0 ? parseOrgNum(totalRow[idxView]||'0') : 0
+  };
+
+  // Strategy 4: any row containing "total" in first column
+  const anyTotal=data.find(r=>/total/i.test((r[0]||'').trim()));
+  if(anyTotal && idxImp>=0) return {
+    imp:  parseOrgNum(anyTotal[idxImp]||'0'),
+    view: idxView>=0 ? parseOrgNum(anyTotal[idxView]||'0') : 0
+  };
+
+  // Strategy 5: sum all non-header, non-total rows
+  const inflRows=data.filter(r=>r[Math.max(idxInfl,0)]&&!/total/i.test(r[Math.max(idxInfl,0)]||''));
+  return {
+    imp:  idxImp>=0  ? inflRows.reduce((s,r)=>s+parseOrgNum(r[idxImp]||''),0)  : 0,
+    view: idxView>=0 ? inflRows.reduce((s,r)=>s+parseOrgNum(r[idxView]||''),0) : 0
+  };
+}
+
+function renderOrgCards(){
+  // Soma florida + bra + rr
+  let grandImp=0, grandView=0, grandInfl=0, grandPend=0;
+  getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
+    const rows=_orgData[s.id]; if(!rows) return;
+    const t=getSheetTotals(rows); grandImp+=t.imp; grandView+=t.view;
+    const h=rows[0]; const data=rows.slice(1).filter(r=>r.some(c=>c));
+    const iI=h.findIndex(x=>/influenc/i.test(x));
+    const iImp=h.findIndex(x=>/impress/i.test(x));
+    const inflRows=data.filter(r=>r[Math.max(iI,0)]&&!/total/i.test(r[Math.max(iI,0)]||''));
+    grandInfl+=inflRows.length;
+    grandPend+=inflRows.filter(r=>{const v=r[iImp>=0?iImp:2]||'';return v==='-'||v===''||v.toLowerCase()==='pendente';}).length;
+  });
+
+  // Card "Dados Gerais" = soma das 3 campanhas
+  const geralCard = grandImp>0 ? `<div class="kpi-card" style="--ac:#F5C842;cursor:pointer;transition:transform .2s;" onclick="showOrgSheet('all')" onmouseenter="this.style.transform='translateY(-3px)'" onmouseleave="this.style.transform=''">
+    <div class="kpi-lbl">🏠 Dados Gerais</div>
+    <div class="kpi-val" style="font-size:22px;margin-bottom:2px;">${fmtOrgNum(String(grandImp))}</div>
+    <div class="kpi-sub">impressões totais</div>
+    <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:4px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">👁 Views</span><strong>${fmtOrgNum(String(grandView))}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">👤 Influenciadores</span><strong>${grandInfl}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Status</span>${grandPend>0?`<span style="color:#F5C842;">⏳ ${grandPend} pendentes</span>`:`<span style="color:#1EC99B;">✅ Entregue</span>`}</div>
+    </div>
+  </div>` : `<div class="kpi-card" style="--ac:#F5C842;opacity:.35;"><div class="kpi-lbl">🏠 Dados Gerais</div><div class="kpi-val nd">Aguardando dados</div></div>`;
+
+  const cards = getAllSheets().filter(s=>s.id!=='geral').map(s=>{
+    const rows=_orgData[s.id];
+    if(!rows) return `<div class="kpi-card" style="--ac:${s.color};opacity:.35;"><div class="kpi-lbl">${s.icon} ${s.label}</div><div class="kpi-val nd">Não configurada</div></div>`;
+    const headers=rows[0];
+    const data=rows.slice(1).filter(r=>r.some(c=>c));
+    const idxInfl=headers.findIndex(h=>/influenc/i.test(h));
+    const idxImp=headers.findIndex(h=>/impress/i.test(h));
+    const {imp:totImpN,view:totViewN}=getSheetTotals(rows);
+    const totImp=totImpN?fmtOrgNum(String(totImpN)):'—';
+    const totView=totViewN?fmtOrgNum(String(totViewN)):'—';
+    const inflRows=data.filter(r=>r[Math.max(idxInfl,0)]&&!/total/i.test(r[Math.max(idxInfl,0)]||''));
+    const pendentes=inflRows.filter(r=>{const v=r[idxImp>=0?idxImp:2]||'';return v==='-'||v===''||v.toLowerCase()==='pendente';}).length;
+    const pct=grandImp>0?((totImpN/grandImp)*100).toFixed(1):0;
+    return `<div class="kpi-card" style="--ac:${s.color};cursor:pointer;transition:transform .2s;" onclick="showOrgSheet('${s.id}')" onmouseenter="this.style.transform='translateY(-3px)'" onmouseleave="this.style.transform=''">
+      <div class="kpi-lbl">${s.icon} ${s.label}</div>
+      <div class="kpi-val" style="font-size:22px;margin-bottom:2px;">${totImp}</div>
+      <div class="kpi-sub">impressões</div>
+      ${grandImp>0?`<div style="margin-top:6px;"><div style="height:4px;background:var(--bg);border-radius:2px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${s.color};border-radius:2px;"></div></div><div style="font-size:10px;color:var(--muted);margin-top:3px;">${pct}% do total</div></div>`:''}
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">👁 Views</span><strong>${totView}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">👤 Influenciadores</span><strong>${inflRows.length}</strong></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Status</span>${pendentes>0?`<span style="color:#F5C842;">⏳ ${pendentes} pendente${pendentes>1?'s':''}</span>`:`<span style="color:#1EC99B;">✅ Entregue</span>`}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  $('org-cards').innerHTML = geralCard + cards;
+}
+
+function renderOrgPodium(){
+  const ranking={};
+  getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
+    const rows=_orgData[s.id];if(!rows)return;
+    const h=rows[0];
+    const iI=h.findIndex(x=>/influenc/i.test(x));
+    const iM=h.findIndex(x=>/impress/i.test(x));
+    if(iI<0||iM<0)return;
+    let ec=0;
+    rows.slice(1).forEach(r=>{
+      if(!r.some(c=>c)){ec++;return;}
+      if(ec>=2) return;
+      ec=0;
+      const name=(r[iI]||'').trim();
+      if(!name||/total/i.test(name))return;
+      const imp=parseOrgNum(r[iM]);
+      if(imp>0) ranking[name]=(ranking[name]||0)+imp;
+    });
+  });
+  const sorted=Object.entries(ranking).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  if(!sorted.length){$('org-podium-wrap').style.display='none';return;}
+  $('org-podium-wrap').style.display='block';
+  const medals=['🥇','🥈','🥉','4º','5º'];
+  const colors=['#F5C842','#C0C0C0','#CD7F32','#8B5CF6','#3B82F6'];
+  const heights=['130px','105px','85px','65px','65px'];
+  const order=sorted.length>=3?[1,0,2,...Array.from({length:sorted.length-3},(_,i)=>i+3)]:[...Array.from({length:sorted.length},(_,i)=>i)];
+  $('org-podium').innerHTML=`<div style="display:flex;align-items:flex-end;justify-content:center;gap:10px;flex-wrap:wrap;">
+    ${order.map(idx=>{
+      const[name,imp]=sorted[idx];
+      return`<div style="display:flex;flex-direction:column;align-items:center;min-width:90px;max-width:170px;flex:1;">
+        <div style="text-align:center;margin-bottom:6px;">
+          <div style="font-size:${idx<3?'26px':'18px'}">${medals[idx]}</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#fff;word-break:break-word;line-height:1.2;margin-top:4px;">${name}</div>
+          <div style="font-size:16px;font-weight:800;color:${colors[idx]};margin-top:4px;font-family:'Space Grotesk',sans-serif;">${fmtOrgNum(String(imp))}</div>
+          <div style="font-size:10px;color:var(--muted);">impressões</div>
+        </div>
+        <div style="width:100%;height:${heights[idx]||'55px'};background:linear-gradient(180deg,${colors[idx]}33,${colors[idx]}11);border:1px solid ${colors[idx]}55;border-bottom:none;border-radius:8px 8px 0 0;"></div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderOrgSubTabs(){
+  const tabs=getAllSheets().filter(s=>_orgData[s.id]&&s.id!=='geral');
+  $('org-subtabs').style.display=tabs.length?'flex':'none';
+  // "Todas" só aparece se tiver 2+ planilhas
+  const allBtn=tabs.length>=2?`<button class="tab org-subtab" id="orgtab-all" onclick="showOrgSheet('all')" style="border-top:2px solid #F5C842;">🔀 Todas as Campanhas</button>`:'';
+  $('org-subtabs').innerHTML=allBtn+tabs.map(s=>`<button class="tab org-subtab" id="orgtab-${s.id}" onclick="showOrgSheet('${s.id}')" style="border-top:2px solid ${s.color};">${s.icon} ${s.label}</button>`).join('');
+}
+
+function showOrgSheet(id){
+  _orgActive=id;
+  document.querySelectorAll('.org-subtab').forEach(t=>t.classList.remove('active'));
+  const el=$('orgtab-'+id);if(el)el.classList.add('active');
+
+  const allSheets = getAllSheets();
+
+  // Vista unificada
+  if(id==='all'){
+    const campSheets=allSheets.filter(s=>_orgData[s.id]);
+    if(!campSheets.length) return;
+
+    const merged={};
+    campSheets.forEach(s=>{
+      const rows=_orgData[s.id];
+      const h=rows[0];
+      const iI   = h.findIndex(x=>/influenc|org[âa]nico/i.test(x));
+      const iC   = h.findIndex(x=>/conte[uú]|stories|post/i.test(x));
+      const iImp = h.findIndex(x=>/impress/i.test(x));
+      const iView= h.findIndex(x=>/^view/i.test(x));
+      const iClk = h.findIndex(x=>/clique|click/i.test(x));
+      const iAlcU= h.findIndex(x=>/alcance/i.test(x));
+      let _ec=0;
+      rows.slice(1).forEach(r=>{
+        if(!r.some(c=>c)){_ec++;return;}
+        if(_ec>=2) return;
+        _ec=0;
+        const name=(r[iI>=0?iI:1]||'').trim();
+        if(!name||/total/i.test(name)) return;
+        const cont=(r[iC>=0?iC:0]||'').trim();
+        const key=name+'||'+cont;
+        if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0,clk:0,alc:0};
+        merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
+        merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
+        merged[key].clk  += parseOrgNum(r[iClk>=0?iClk:5]||'');
+        merged[key].alc  += parseOrgNum(r[iAlcU>=0?iAlcU:2]||'');
+      });
+    });
+
+    const rows=Object.values(merged).sort((a,b)=>b.imp-a.imp);
+    const totalImp=rows.reduce((s,r)=>s+r.imp,0);
+    const totalView=rows.reduce((s,r)=>s+r.view,0);
+    const maxImp=Math.max(...rows.map(r=>r.imp),1);
+
+    if($('org-tbl-title'))$('org-tbl-title').textContent='🔀 Todas as Campanhas — Unificado';
+    if($('org-tbl-total'))$('org-tbl-total').textContent=`${rows.length} influenciadores`;
+
+    const totalClk=rows.reduce((s,r)=>s+r.clk,0);
+    const totalAlc=rows.reduce((s,r)=>s+(r.alc||0),0);
+    const hasView=rows.some(r=>r.view>0);
+    $('org-head').innerHTML=`<tr><th>Influenciador</th><th>Conteúdo</th><th>Impressões</th><th>Alcance</th><th>Cliques</th>${hasView?'<th>Views</th>':''}</tr>`;
+    $('org-body').innerHTML=[
+      `<tr style="background:var(--bg2);font-weight:700;border-bottom:2px solid var(--border);">
+        <td>TOTAL</td><td>—</td>
+        <td>${fmtOrgNum(String(totalImp))}</td>
+        <td>${fmtOrgNum(String(totalAlc))}</td>
+        <td>${fmtOrgNum(String(totalClk))}</td>
+        ${hasView?`<td>${fmtOrgNum(String(totalView))}</td>`:''}
+      </tr>`,
+      ...rows.map(r=>{
+        const isPend=r.imp===0;
+        const pct=(r.imp/maxImp*100).toFixed(1);
+        return`<tr>
+          <td style="font-weight:600;">${r.influenciador}</td>
+          <td style="color:var(--muted);font-size:12px;">${r.conteudo||'—'}</td>
+          <td>${isPend?`<span style="font-size:11px;color:#F5C842;background:rgba(245,200,66,.1);padding:2px 7px;border-radius:20px;">⏳ Pendente</span>`:`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:#F5C842;"></div></div><span class="bar-v">${fmtOrgNum(String(r.imp))}</span></div>`}</td>
+          <td>${fmtOrgNum(String(r.alc||0))}</td>
+          <td style="font-weight:600;color:#1EC99B;">${r.clk>0?fmtOrgNum(String(r.clk)):'—'}</td>
+          ${hasView?`<td>${fmtOrgNum(String(r.view))}</td>`:''}
+        </tr>`;
+      })
+    ].join('');
+    return;
+  }
+
+  // Vista individual
+  const s=allSheets.find(x=>x.id===id);
+  const rows=_orgData[id];
+  if(!rows||!s){$('org-head').innerHTML='';$('org-body').innerHTML='';return;}
+
+  // Detecta formato da planilha — nova (Stories, Orgânico, Postagem, Impressões, Alcance, Cliques)
+  const h=rows[0];
+  const iStories = h.findIndex(x=>/stories/i.test(x));
+  const iOrg     = h.findIndex(x=>/org[âa]nico/i.test(x));
+  const iPost    = h.findIndex(x=>/postagem/i.test(x));
+  const iImp     = h.findIndex(x=>/impress/i.test(x));
+  const iAlc     = h.findIndex(x=>/alcance/i.test(x));
+  const iClk     = h.findIndex(x=>/clique/i.test(x));
+
+  const isNewFormat = iStories>=0 && iOrg>=0 && iImp>=0;
+
+  if(isNewFormat){
+    // Novo formato: Stories | Orgânico | Postagem | Impressões | Alcance | Cliques
+    const cols = [
+      {label:'Stories',    idx:iStories},
+      {label:'Orgânico',   idx:iOrg},
+      {label:'Postagem',   idx:iPost>=0?iPost:-1},
+      {label:'Impressões', idx:iImp},
+      {label:'Alcance',    idx:iAlc>=0?iAlc:-1},
+      {label:'Cliques',    idx:iClk>=0?iClk:-1},
+    ].filter(c=>c.idx>=0);
+
+    const data=rows.slice(1).filter(r=>r.some(c=>c)&&r[iOrg]?.trim()&&!/total/i.test(r[iOrg]));
+    const maxImp=Math.max(...data.map(r=>parseOrgNum(r[iImp]||'')),1);
+
+    if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
+    if($('org-tbl-total'))$('org-tbl-total').textContent=`${data.length} linhas`;
+
+    $('org-head').innerHTML=`<tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr>`;
+    $('org-body').innerHTML=data.map(r=>{
+      return`<tr>${cols.map(c=>{
+        const v=(r[c.idx]||'').trim()||'—';
+        if(c.label==='Impressões'){
+          const n=parseOrgNum(v);
+          if(n===0) return`<td><span style="font-size:11px;color:#F5C842;background:rgba(245,200,66,.1);padding:2px 7px;border-radius:20px;">⏳ Pendente</span></td>`;
+          const pct=(n/maxImp*100).toFixed(1);
+          return`<td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:${s.color};"></div></div><span class="bar-v">${fmtOrgNum(v)}</span></div></td>`;
+        }
+        return`<td>${fmtOrgNum(v)}</td>`;
+      }).join('')}</tr>`;
+    }).join('');
+    return;
+  }
+
+  // Formato antigo — mostra primeiras 4 colunas, para em 3 linhas vazias consecutivas
+  const headers=h.slice(0,5);
+  let emptyCount=0;
+  const data=rows.slice(1).filter(r=>{
+    if(!r.some(c=>c)){emptyCount++;return false;}
+    if(emptyCount>=2) return false;
+    emptyCount=0;
+    return true;
+  });
+  if($('org-tbl-title'))$('org-tbl-title').textContent=`${s.icon} ${s.label}`;
+  if($('org-tbl-total'))$('org-tbl-total').textContent=`${data.length} linhas`;
+  const idxImp=headers.findIndex(h=>/impress/i.test(h));
+  const maxImp=Math.max(...data.map(r=>parseOrgNum(r[idxImp]||'')),1);
+  $('org-head').innerHTML=`<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
+  $('org-body').innerHTML=data.map(r=>{
+    const row4=r.slice(0,5);
+    const isTotal=/total/i.test(row4[0]||'');
+    const style=isTotal?'background:var(--bg2);font-weight:700;border-top:2px solid var(--border);':'';
+    const cells=headers.map((_,i)=>{
+      const v=row4[i]||'—';
+      const isPend=v.toLowerCase()==='pendente'||v==='-';
+      if(i===idxImp&&!isTotal&&!isPend){
+        const pct=(parseOrgNum(v)/maxImp*100).toFixed(1);
+        return`<td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:${s.color};"></div></div><span class="bar-v">${fmtOrgNum(v)}</span></div></td>`;
+      }
+      if(isPend&&!isTotal) return`<td><span style="font-size:11px;color:#F5C842;background:rgba(245,200,66,.1);padding:2px 7px;border-radius:20px;">⏳ Pendente</span></td>`;
+      return`<td>${isTotal&&i===0?`<strong>${v}</strong>`:fmtOrgNum(v)}</td>`;
+    }).join('');
+    return`<tr style="${style}">${cells}</tr>`;
+  }).join('');
+}
+
+
+// AUTH
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&$('login-screen').style.display!=='none')doLogin();});
+(function(){
+  const t=sessionStorage.getItem('copa_token'),u=sessionStorage.getItem('copa_user');
+  if(t&&u){
+    // Verifica se o token JWT ainda não expirou antes de restaurar a sessão
+    try{
+      const payload=JSON.parse(atob(t.split('.')[1]));
+      if(payload.exp && payload.exp * 1000 < Date.now()){
+        // Token expirado — limpa e mostra login
+        sessionStorage.removeItem('copa_token');sessionStorage.removeItem('copa_user');
+      } else {
+        TOKEN=t;USER=JSON.parse(u);startApp();
+      }
+    }catch(e){
+      sessionStorage.removeItem('copa_token');sessionStorage.removeItem('copa_user');
+    }
+  }
+})();
+
+async function doLogin(){
+  const u=$('inp-u').value.trim(),p=$('inp-p').value;
+  const btn=$('lbtn');btn.disabled=true;btn.textContent='Entrando...';$('lerr').style.display='none';
+  try{
+    const res=await fetch(`${API}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Erro no login.');
+    TOKEN=data.token;USER=data;
+    sessionStorage.setItem('copa_token',TOKEN);
+    sessionStorage.setItem('copa_user',JSON.stringify(USER));
+    startApp();
+  }catch(e){$('lerr').textContent=e.message;$('lerr').style.display='block';}
+  finally{btn.disabled=false;btn.textContent='Entrar';}
+}
+function doLogout(){
+  USER=null;TOKEN=null;
+  sessionStorage.removeItem('copa_token');sessionStorage.removeItem('copa_user');
+  $('login-screen').style.display='flex';$('app').style.display='none';
+  $('inp-u').value='';$('inp-p').value='';destroyCharts();
+}
+function startApp(){
+  $('login-screen').style.display='none';
+  $('app').style.display='block';
+  if(USER && USER.role==='admin'){
+    $('admin-panel').style.display='block';
+    $('dash-section').style.display='none';
+    $('topbar-dates').style.display='none';
+    loadCampConfigToForm();
+    loadAdminUsers();
+  } else {
+    $('admin-panel').style.display='none';
+    $('dash-section').style.display='block';
+    $('topbar-dates').style.display='flex';
+    $('ds').value=mStart();
+    $('de').value=today();
+    // 1. Busca config do backend
+    loadConfig().then((cfgData)=>{
+      renderCampHeader(_campConfigCache);
+      loadData();
+    }).catch(()=>{
+      renderCampHeader();
+      loadData();
+    });
+  }
+}
+
+
+async function apiFetch(path,opts={}){
+  try{
+    const res=await fetch(API+path,{...opts,headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json',...(opts.headers||{})}});
+    if(res.status===401){toast('Sessão expirada, faça login novamente.','red');setTimeout(doLogout,2000);return null;}
+    return res.json();
+  }catch(e){console.error('apiFetch',path,e.message);return null;}
+}
+
+function userExcludesCamp(campName){
+  const excl=(USER?.exclude||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  if(!excl.length) return false;
+  return excl.some(e=>(campName||'').toUpperCase().includes(e));
+}
+
+function renderCampHeader(cfg){
+  if(!cfg) cfg=getCampConfig();
+  const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  const _ok=kw=>{if(!_uKws.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKws.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
+  const active=cfg.filter(c=>c.kw&&_ok(c.kw)&&!userExcludesCamp(c.kw));
+  const el=$('camp-header');
+  if(!active.length){
+    el.setAttribute('style','display:block');
+    el.innerHTML=`<div style="padding:12px;font-size:13px;color:var(--muted);">Nenhuma campanha configurada. Solicite ao administrador.</div>`;
+    return;
+  }
+  el.setAttribute('style',`display:grid;grid-template-columns:repeat(${active.length},1fr);gap:14px;margin-bottom:24px;`);
+  el.innerHTML=cfg.map((c,i)=>{
+    if(!c.kw||!_ok(c.kw)||userExcludesCamp(c.kw)) return '';
+    return `<div class="camp-slot" style="--slot-color:${CAMP_COLORS[i]}">
+      <div class="camp-slot-num">Campanha ${i+1}</div>
+      <div class="camp-slot-name">${c.nome||'—'}</div>
+      <div class="camp-slot-kw">${c.kw}</div>
+      <div class="camp-slot-click">📊 ${CLICK_LABELS[c.click]||'Cliques no Link'}</div>
+    </div>`;
+  }).join('');
+}
+
+async function loadData(){
+  const start=$('ds').value,end=$('de').value;if(!start||!end)return;
+  loading(true);if($('upd-btn'))$('upd-btn').disabled=true;
+  try{
+    const p=`start_date=${start}&end_date=${end}`;
+    // 1. Busca config e dados BQ em paralelo
+    const[cfgData, kpi, series, byCamp, byInfl]=await Promise.all([
+      apiFetch('/api/config'),
+      apiFetch(`/api/data?${p}&type=kpi`),
+      apiFetch(`/api/data?${p}&type=timeseries`),
+      apiFetch(`/api/data?${p}&type=by_campaign`),
+      apiFetch(`/api/data?${p}&type=by_influencer`),
+    ]);
+    const urls = cfgData?.sheets_urls||{};
+    // 2. Carrega orgânico se necessário
+    if(!Object.keys(_orgData).length) await loadOrganico(true);
+    if(kpi){window._lastKpi=kpi;renderKPIs(kpi);}
+    if(series)renderCharts(series.rows||[]);
+    if(byCamp){allCRows=byCamp.rows||[];renderCampTable(allCRows);renderComparativo(allCRows,kpi);}
+    if(byInfl){
+      allInflRows=byInfl.rows||[];
+      populateInflCampFilter();
+    }
+  }catch(e){console.error(e);toast('Erro ao buscar dados: '+e.message,'red');}
+  finally{loading(false);if($('upd-btn'))$('upd-btn').disabled=false;}
+}
+
+function renderKPIs(k){
+  const cfg=getCampConfig();
+  const _uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  const activeCamp=cfg.find(c=>c.kw&&(_uKws.length===0||_uKws.some(uk=>c.kw.toUpperCase().includes(uk)||uk.includes(c.kw.toUpperCase()))));
+  const clickKey=activeCamp?.click||'clicks_link';
+  const clickLabel=CLICK_LABELS[clickKey]||'Cliques';
+
+  // Soma impressões orgânicas (apenas campanhas: florida, bra, rr — não Dados Gerais)
+  let orgImp=0;
+  if(typeof _orgData !== 'undefined'){
+    getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{ orgImp+=getSheetTotals(_orgData[s.id]).imp; });
+  }
+  const totalImp = (Number(k.impressions)||0) + orgImp;
+  let orgClk=0;
+getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
+  const rows=_orgData[s.id];if(!rows)return;
+  const h=rows[0];
+  const iClk=h.findIndex(x=>/clique|click/i.test(x));
+  if(iClk<0)return;
+  let ec=0;
+  rows.slice(1).forEach(r=>{
+    if(!r.some(c=>c)){ec++;return;}
+    if(ec>=2)return;
+    ec=0;
+    if(/total/i.test(r[0]||''))return;
+    orgClk+=parseOrgNum(r[iClk]||'');
+  });
+});
+
+  const impCard = `<div class="kpi-card" style="--ac:#F5C842"><div class="kpi-lbl">Impressões</div><div class="kpi-val">${fmt(totalImp)}</div><div class="kpi-sub">${orgImp>0?'paid + orgânico':'total'}</div></div>`;
+
+  const otherCards=[
+   {l:clickLabel,  v:fmt((Number(k[clickKey])||0)+orgClk),  s:'tipo configurado', ac:'#1EC99B'},
+    {l:'CTR',       v:fmtP(k.ctr),       s:'taxa de cliques',  ac:'#EC4899'},
+    {l:'ThruPlay',  v:fmt(k.thruplay),   s:'vídeos completos', ac:'#F5A623'},
+    {l:'VTR',       v:fmtP(k.vtr),       s:'view through rate',ac:'#8B5CF6'},
+  ].map(c=>`<div class="kpi-card" style="--ac:${c.ac}"><div class="kpi-lbl">${c.l}</div><div class="kpi-val ${c.v==='—'?'nd':''}">${c.v}</div><div class="kpi-sub">${c.s}</div></div>`).join('');
+
+  $('kpi-grid').innerHTML = impCard + otherCards;
+}
+
+function renderCharts(rows){ /* gráficos removidos */ }
+function destroyCharts(){Object.values(CH).forEach(c=>c&&c.destroy());CH={};}
+
+function renderCampTable(rows){
+  const filtered = rows.filter(r=>(r.impressions||0)>0 && !userExcludesCamp(r.CAMPAIGN_NAME));
+  if(!filtered.length){$('c-tbody').innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ico">📋</div><h3>Nenhuma campanha no período</h3></div></td></tr>`;return;}
+  const mI=Math.max(...filtered.map(r=>r.impressions||0),1);
+  const cfg=getCampConfig();
+const getClk=r=>{const c=cfg.find(c=>c.kw&&(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));return r[c?.click||'clicks_link']||0;};
+const mC=Math.max(...filtered.map(r=>getClk(r)),1);
+  const mT=Math.max(...filtered.map(r=>r.thruplay||0),1);
+  $('c-tbody').innerHTML=filtered.map(row=>{
+    const p=(row.platform||'').toLowerCase();
+    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':p.includes('kwai')?'kwai':'other';
+    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':p.includes('kwai')?'🟨 Kwai':row.platform||'—';
+    return`<tr><td style="max-width:260px;word-break:break-word;font-size:12px;">${row.CAMPAIGN_NAME||'—'}</td><td><span class="plt plt-${pc}">${pl}</span></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.impressions||0)/mI*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(row.impressions)}</span></div></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${(getClk(row)/mC*100).toFixed(1)}%;background:#1EC99B;"></div></div><span class="bar-v">${fmt(getClk(row))}</span></div></td><td>${fmtP(row.ctr)}</td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.thruplay||0)/mT*100).toFixed(1)}%;background:#3B82F6;"></div></div><span class="bar-v">${fmt(row.thruplay)}</span></div></td><td>${fmtP(row.vtr)}</td></tr>`;
+  }).join('');
+}
+
+function renderComparativo(rows,kpi){
+  const cfg=getCampConfig();
+  // Agrupa por campanha configurada
+  const _uKwsC=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+  const _okC=kw=>{if(!_uKwsC.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKwsC.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
+  // Include all unique campaigns from API (including sheet data like Kwai)
+  const allCampsFromAPI = [...new Set(rows.map(r=>r.CAMPAIGN_NAME||'').filter(Boolean))];
+  const cfgKws = cfg.filter(c=>c.kw).map(c=>c.kw.toUpperCase());
+  // Add extra campaigns not covered by config (e.g. Kwai)
+  const extraCamps = allCampsFromAPI.filter(camp=>
+    !cfgKws.some(kw=>camp.toUpperCase().includes(kw)) && !userExcludesCamp(camp)
+  );
+
+  const cards=cfg.map((c,i)=>{
+    if(!c.kw||!_okC(c.kw))return null;
+    const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));
+    const imp=campRows.reduce((a,r)=>a+(r.impressions||0),0);
+    const clk=campRows.reduce((a,r)=>a+(r[c.click]||0),0);
+    const tp=campRows.reduce((a,r)=>a+(r.thruplay||0),0);
+    const v100=campRows.reduce((a,r)=>a+(r.views100||0),0);
+    const ctr=imp?((clk/imp)*100):0;
+    const vtr=imp?((tp/imp)*100):0;
+    return{cfg:c,color:CAMP_COLORS[i],data:{imp,clk,tp,v100,ctr,vtr,clickLabel:CLICK_LABELS[c.click]}};
+  }).filter(Boolean); // remove nulls
+
+  const activeCount=cards.length;
+  const compareEl=$('camp-compare');
+  compareEl.setAttribute('style',`display:grid;grid-template-columns:repeat(${activeCount||1},1fr);gap:14px;`);
+  // Atualiza label dinamicamente
+  const lbl=$('lbl-comparativo');
+  if(lbl) lbl.textContent=`Comparativo das ${activeCount} Campanha${activeCount!==1?'s':''}`;
+
+  if(!activeCount){
+    compareEl.innerHTML=`<div class="cmp-card"><div class="cmp-body"><div class="empty" style="padding:24px;"><div class="ico">⚙️</div><p>Nenhuma campanha configurada. Solicite ao administrador.</p></div></div></div>`;
+    $('influenciadores-section').innerHTML='';
+    return;
+  }
+
+  // Add extra cards for sheet-only campaigns (Kwai etc)
+  const extraCards = extraCamps.map(campName => {
+    const campRows = rows.filter(r=>(r.CAMPAIGN_NAME||'')=== campName);
+    const imp = campRows.reduce((a,r)=>a+(r.impressions||0),0);
+    const clk = campRows.reduce((a,r)=>a+(r.clicks_link||r.clicks||0),0);
+    const tp  = campRows.reduce((a,r)=>a+(r.thruplay||0),0);
+    const v100= campRows.reduce((a,r)=>a+(r.views100||0),0);
+    const ctr = imp?((clk/imp)*100):0;
+    const vtr = imp?((tp/imp)*100):0;
+    const plat= [...new Set(campRows.map(r=>r.platform||''))].join(', ');
+    return {cfg:{nome:campName,kw:'',click:'clicks_link'}, color:'#FFA500',
+            data:{imp,clk,tp,v100,ctr,vtr,clickLabel:'Cliques no Link',plat}};
+  });
+  const allCards = [...cards, ...extraCards];
+
+  compareEl.innerHTML=allCards.map(c=>{
+    const d=c.data;
+    return`<div class="cmp-card" style="border-top:3px solid ${c.color};">
+      <div class="cmp-head"><div class="cmp-name">${c.cfg.nome}</div><span style="font-size:11px;background:rgba(255,255,255,.06);padding:3px 8px;border-radius:20px;color:var(--muted);">${d.clickLabel}</span></div>
+      <div class="cmp-body">
+        <div class="cmp-row"><span class="cmp-lbl">Impressões</span><span class="cmp-val">${fmt(d.imp)}</span></div>
+        <div class="cmp-row"><span class="cmp-lbl">${d.clickLabel}</span><span class="cmp-val">${fmt(d.clk)}</span></div>
+        <div class="cmp-row"><span class="cmp-lbl">CTR</span><span class="cmp-val" style="color:${c.color};">${fmtP(d.ctr)}</span></div>
+        <div class="cmp-row"><span class="cmp-lbl">ThruPlay</span><span class="cmp-val">${fmt(d.tp)}</span></div>
+        <div class="cmp-row"><span class="cmp-lbl">VTR</span><span class="cmp-val" style="color:${c.color};">${fmtP(d.vtr)}</span></div>
+        <div class="cmp-row"><span class="cmp-lbl">Views 100%</span><span class="cmp-val">${fmt(d.v100)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Influenciadores por campanha
+  $('influenciadores-section').innerHTML=cards.map(c=>{
+    const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.cfg.kw));
+    const byPlat={};
+    campRows.forEach(r=>{
+      const k=r.platform||'Outros';
+      if(!byPlat[k])byPlat[k]={imp:0,clk:0,tp:0};
+      byPlat[k].imp+=r.impressions||0;
+      byPlat[k].clk+=r[c.cfg.click]||0;
+      byPlat[k].tp+=r.thruplay||0;
+    });
+    const platRows=Object.entries(byPlat).filter(([,d])=>d.imp>0).sort((a,b)=>b[1].imp-a[1].imp);
+    if(!platRows.length)return'';
+    return`<div class="tbl-card" style="margin-bottom:16px;border-top:3px solid ${c.color};">
+      <div class="tbl-top"><div class="tbl-ttl">${c.cfg.nome} — por Plataforma</div></div>
+      <div style="overflow-x:auto;"><table><thead><tr><th>Plataforma</th><th>Impressões</th><th>${CLICK_LABELS[c.cfg.click]}</th><th>ThruPlay</th></tr></thead>
+      <tbody>${platRows.map(([plt,d])=>`<tr><td>${plt}</td><td>${fmt(d.imp)}</td><td>${fmt(d.clk)}</td><td>${fmt(d.tp)}</td></tr>`).join('')}</tbody>
+      </table></div></div>`;
+  }).join('');
+}
+// INFLUENCIADORES
+const INFL_COLS = [
+  {key:'influenciador', label:'Influenciador', fmt:r=>r.influenciador||'—', sortable:true},
+  {key:'platform',      label:'Plataforma',    fmt:r=>{
+    const p=(r.platform||'').toLowerCase();
+    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':p.includes('kwai')?'kwai':'other';
+    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':p.includes('kwai')?'🟨 Kwai':r.platform||'—';
+    return `<span class="plt plt-${pc}">${pl}</span>`;
+  }, sortable:true},
+  {key:'impressions',   label:'Impressões',    fmt:(r,mx)=>`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((r.impressions||0)/mx.imp*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(r.impressions)}</span></div>`, sortable:true},
+  {key:'_click',        label:'Cliques',       fmt:r=>`<span style="font-weight:700;color:#1EC99B;">${fmt(r[getCampConfig().find(c=>c.kw)?.click||'clicks_link'])}</span>`, sortable:false},
+  {key:'_ctr',          label:'CTR',           fmt:r=>`<span style="font-weight:700;color:#EC4899;">${fmtP(r[(getCampConfig().find(c=>c.kw)?.click||'clicks_link')==='clicks_link'?'ctr_link':'ctr_click'])}</span>`, sortable:false},
+  {key:'thruplay',      label:'ThruPlay',      fmt:r=>fmt(r.thruplay), sortable:true},
+  {key:'vtr',           label:'VTR',           fmt:(r,mx)=>{
+    const vtrColor=(r.vtr||0)>=15?'#1EC99B':(r.vtr||0)>=8?'#F5C842':'#F05A5A';
+    const pct=Math.min(((r.vtr||0)/(mx.vtr||1)*100),100).toFixed(1);
+    return `<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${pct}%;background:${vtrColor};"></div></div><span class="bar-v" style="color:${vtrColor};font-weight:700;">${fmtP(r.vtr)}</span></div>`;
+  }, sortable:true},
+];
+
+function populateInflCampFilter(){
+  const sel=$('infl-camp-filter');
+  const camps=[...new Set(allInflRows.map(r=>r.CAMPAIGN_NAME||'').filter(Boolean))].sort();
+  sel.innerHTML=`<option value="">Todas as campanhas</option>`+camps.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
+
+function getFilteredInflRows(){
+  const search=($('infl-search')?.value||'').toLowerCase();
+  const camp=$('infl-camp-filter')?.value||'';
+return allInflRows.filter(r=>{
+    if((r.impressions||0)===0) return false;
+    const matchSearch=!search||(r.influenciador||'').toLowerCase().includes(search);
+    const matchCamp=!camp||(r.CAMPAIGN_NAME||'')==camp;
+    return matchSearch&&matchCamp;
+  });
+}
+
+function changeInflMetric(key){
+  _inflSortKey=key; _inflSortDir=-1;
+  renderInflTable();
+}
+
+function sortInfl(key){
+  if(_inflSortKey===key)_inflSortDir*=-1;
+  else{_inflSortKey=key;_inflSortDir=-1;}
+  renderInflTable();
+}
+
+function filterInflTable(){renderInflTable();}
+
+function renderInflPodium(sorted){
+  const podiumEl=$('infl-podium');
+  if(!sorted.length){podiumEl.innerHTML='';return;}
+
+  // Agrupa por influenciador (soma todas as linhas do mesmo influenciador)
+  const byInfl={};
+  sorted.forEach(r=>{
+    const k=r.influenciador||'Sem Influenciador';
+    if(!byInfl[k])byInfl[k]={influenciador:k,impressions:0,clicks_link:0,thruplay:0,vtr_sum:0,vtr_count:0,views100:0};
+    byInfl[k].impressions+=r.impressions||0;
+    byInfl[k].clicks_link+=r.clicks_link||0;
+    byInfl[k].thruplay+=r.thruplay||0;
+    byInfl[k].vtr_sum+=r.vtr||0;
+    byInfl[k].vtr_count+=1;
+    byInfl[k].views100+=r.views100||0;
+  });
+  Object.values(byInfl).forEach(r=>r.vtr=r.vtr_count?r.vtr_sum/r.vtr_count:0);
+
+  const rankList=Object.values(byInfl).sort((a,b)=>(b[_inflSortKey]||0)-(a[_inflSortKey]||0));
+  const top=rankList.slice(0,3);
+  if(!top.length){podiumEl.innerHTML='';return;}
+
+  const metricLabels={impressions:'Impressões',clicks_link:'PG View',vtr:'VTR',thruplay:'ThruPlay',views100:'Views 100%'};
+  const metricFmt={impressions:v=>fmt(v),clicks_link:v=>fmt(v),vtr:v=>fmtP(v),thruplay:v=>fmt(v),views100:v=>fmt(v)};
+  const mLabel=metricLabels[_inflSortKey]||'Impressões';
+  const mFmt=metricFmt[_inflSortKey]||fmt;
+
+  const medals=['🥇','🥈','🥉'];
+  const heights=['140px','110px','90px'];
+  const podiumOrder=top.length>=2?[top[1],top[0],top[2]||null]:[top[0]];
+  const podiumIdx=top.length>=2?[1,0,2]:[0];
+  const colors=['#C0C0C0','#F5C842','#CD7F32'];
+
+  podiumEl.innerHTML=`<div style="display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:0 20px 0;">
+    ${podiumOrder.map((r,i)=>{
+      if(!r)return'';
+      const origIdx=podiumIdx[i];
+      const col=colors[origIdx];
+      const h=heights[origIdx];
+      const medal=medals[origIdx];
+      return`<div style="flex:1;max-width:300px;display:flex;flex-direction:column;align-items:center;gap:0;">
+        <div style="text-align:center;margin-bottom:8px;">
+          <div style="font-size:28px;margin-bottom:4px;">${medal}</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:#fff;max-width:180px;word-break:break-word;line-height:1.2;">${r.influenciador}</div>
+          <div style="font-size:20px;font-weight:800;color:${col};margin-top:6px;font-family:'Space Grotesk',sans-serif;">${mFmt(r[_inflSortKey]||0)}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">${mLabel}</div>
+        </div>
+        <div style="width:100%;height:${h};background:linear-gradient(180deg,${col}33 0%,${col}11 100%);border:1px solid ${col}55;border-bottom:none;border-radius:8px 8px 0 0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:12px;">
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--muted);">Impressões</div>
+            <div style="font-size:13px;font-weight:600;color:${col};">${fmt(r.impressions)}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderInflTable(){
+  const rows=getFilteredInflRows();
+  rows.sort((a,b)=>{
+    const av=a[_inflSortKey]??0, bv=b[_inflSortKey]??0;
+    if(typeof av==='string')return av.localeCompare(bv)*_inflSortDir;
+    return(av-bv)*_inflSortDir;
+  });
+
+  // Pódio
+  renderInflPodium(rows);
+
+  // KPI strip
+  const totImp=rows.reduce((s,r)=>s+(r.impressions||0),0);
+  const totClkL=rows.reduce((s,r)=>s+(r.clicks_link||0),0);
+  const totTP=rows.reduce((s,r)=>s+(r.thruplay||0),0);
+  const totV100=rows.reduce((s,r)=>s+(r.views100||0),0);
+  const avgVtr=rows.length?rows.reduce((s,r)=>s+(r.vtr||0),0)/rows.length:0;
+  const uniqueInfl=new Set(rows.map(r=>r.influenciador)).size;
+  const clickKey = getCampConfig().find(c=>c.kw)?.click||'clicks_link';
+  const clickLbl = CLICK_LABELS[clickKey]||'Cliques';
+  $('infl-kpi-strip').innerHTML=[
+    {l:'Influenciadores',v:uniqueInfl,      ac:'#F5C842'},
+    {l:'Impressões',     v:fmt(totImp),     ac:'#1EC99B'},
+    {l:clickLbl,         v:fmt(totClkL),    ac:'#EC4899'},
+    {l:'ThruPlay',       v:fmt(totTP),      ac:'#F5A623'},
+    {l:'VTR Médio',      v:fmtP(avgVtr),    ac:'#8B5CF6'},
+  ].map(c=>`<div class="kpi-card" style="--ac:${c.ac};padding:14px 16px;"><div class="kpi-lbl">${c.l}</div><div class="kpi-val" style="font-size:22px;">${c.v}</div></div>`).join('');
+
+  $('infl-count').textContent=`${rows.length} linha${rows.length!==1?'s':''}`;
+
+  if(!rows.length){
+    $('infl-tbody').innerHTML=`<tr><td colspan="${INFL_COLS.length+1}"><div class="empty"><div class="ico">👤</div><h3>Nenhum dado encontrado</h3></div></td></tr>`;
+    return;
+  }
+
+  const maxV={imp:Math.max(...rows.map(r=>r.impressions||0),1), vtr:Math.max(...rows.map(r=>r.vtr||0),1)};
+
+  // Build header with sort indicators
+  $('infl-thead').innerHTML=`<th>#</th>`+INFL_COLS.map(c=>{
+    const active=_inflSortKey===c.key;
+    const arrow=active?(_inflSortDir===-1?' ▼':' ▲'):'';
+    const style=`cursor:pointer;${active?'color:var(--gold);background:var(--gold-light);':''}`;
+    return `<th style="${style}" onclick="sortInfl('${c.key}')">${c.label}${arrow}</th>`;
+  }).join('');
+
+  // Rank number per influncr
+  $('infl-tbody').innerHTML=rows.map((r,i)=>{
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`<span style="color:var(--muted);font-size:12px;">${i+1}</span>`;
+    const cells=INFL_COLS.map(c=>{ try{return`<td>${c.fmt(r,maxV)}</td>`;}catch(e){return`<td>${r[c.key]??'—'}</td>`;} }).join('');
+    const highlight=i<3?`background:rgba(245,200,66,${0.04-i*0.01});`:'';
+    return`<tr style="${highlight}"><td style="text-align:center;">${medal}</td>${cells}</tr>`;
+  }).join('');
+}
+
+
+function switchTab(name,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['overview','comparativo','influenciadores','organico'].forEach(t=>$('tab-'+t).style.display=t===name?'block':'none');
+  if(name==='organico')loadOrganico();
+  if(name==='influenciadores')renderInflTable();
+}
+
+
+// ADMIN USERS
+async function loadAdminUsers(){
+  const data=await apiFetch('/api/users');if(!data)return;
+  _allUsers = data;
+  $('adm-tbody').innerHTML=data.map(u=>`<tr id="urow-${u.username}">
+    <td><strong>${u.username}</strong></td>
+    <td>${u.client||'—'}</td>
+    <td style="font-size:12px;color:var(--muted);font-family:monospace;">${(u.campaigns||[]).join(', ')||'Todas'}</td>
+    <td style="font-size:12px;color:#F05A5A;font-family:monospace;">${(u.exclude||[]).join(', ')||'—'}</td>
+    <td><span class="role-badge">${u.role==='admin'?'🔑 Admin':'👤 Usuário'}</span></td>
+    <td style="display:flex;gap:6px;">${u.role!=='admin'?`
+      <button class="btn-g" style="padding:4px 10px;font-size:12px;" onclick="adminEdit('${u.username}','${(u.campaigns||[]).join(',')}','${(u.exclude||[]).join(',')}','${u.client||''}')">✏️ Editar</button>
+      <button class="btn-r" onclick="adminDel('${u.username}')">Remover</button>`:''}</td>
+  </tr>`).join('');
+  // Load access sheets config
+  const cfg = await apiFetch('/api/config');
+  if(cfg?.access_sheets?.length){
+    _accessSheets = cfg.access_sheets;
+  } else {
+    // Migrate old sheets_urls to access_sheets
+    const su = cfg?.sheets_urls||{};
+    _accessSheets = [
+      {nome:'Florida Rental Car', url:su.florida||'', users:[]},
+      {nome:'BRA.BET',            url:su.bra||'',     users:[]},
+      {nome:'Rede Ronaldo (RR)',  url:su.rr||'',      users:[]},
+      {nome:'Rede Ronaldo',       url:'',              users:[]},
+      {nome:'Florida Rental Car', url:'',              users:[]},
+      {nome:'BRABET',             url:'',              users:[]},
+    ];
+  }
+  renderAccessSheetsList();
+}
+async function adminAdd(){
+  const username=$('nu').value.trim(),password=$('np').value.trim(),client=$('nc').value.trim(),kRaw=$('nk').value.trim();
+  if(!username||!password)return toast('Preencha usuário e senha.','red');
+  const campaigns=kRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const exRaw=($('nexclude')?.value||'').trim();
+  const exclude=exRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  const res=await apiFetch('/api/users',{method:'POST',body:JSON.stringify({username,password,client,campaigns,exclude})});
+  if(res?.ok){['nu','np','nc','nk','nexclude'].forEach(id=>{if($(id))$(id).value='';});toast('Usuário criado!');loadAdminUsers();}
+  else toast(res?.error||'Erro ao criar.','red');
+}
+async function adminEdit(username, campaigns, exclude, client){
+  const tr = document.getElementById('urow-'+username);
+  if(!tr) return;
+  // Expandir linha com campos editáveis
+  const next = tr.nextSibling;
+  const existing = document.getElementById('uedit-'+username);
+  if(existing){existing.remove();return;}
+  const row = document.createElement('tr');
+  row.id = 'uedit-'+username;
+  row.style.background = 'var(--bg2)';
+  row.innerHTML = `<td colspan="6" style="padding:14px 16px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+      <div class="af"><label>Nome/Client</label><input id="ec-${username}" value="${client}" placeholder="Nome"></div>
+      <div class="af"><label>Acesso (palavras-chave)</label><input id="ek-${username}" value="${campaigns}" placeholder="ex: REDE, BRA"></div>
+      <div class="af"><label>Excluir (palavras-chave)</label><input id="ee-${username}" value="${exclude}" placeholder="ex: INFLR"></div>
+      <button class="btn-g" onclick="adminSaveEdit('${username}')">💾 Salvar</button>
+    </div>
+  </td>`;
+  tr.parentNode.insertBefore(row, next);
+}
+
+async function adminSaveEdit(username){
+  const client = document.getElementById('ec-'+username)?.value.trim()||'';
+  const kRaw   = document.getElementById('ek-'+username)?.value.trim()||'';
+  const exRaw  = document.getElementById('ee-'+username)?.value.trim()||'';
+  const campaigns = kRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const exclude   = exRaw.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+  const res = await apiFetch('/api/users',{method:'PUT',body:JSON.stringify({username,client,campaigns,exclude})});
+  if(res?.ok){toast('Usuário atualizado!');loadAdminUsers();}
+  else toast(res?.error||'Erro ao salvar.','red');
+}
+
+async function adminDel(username){
+  if(!confirm(`Remover "${username}"?`))return;
+  const res=await apiFetch('/api/users',{method:'DELETE',body:JSON.stringify({username})});
+  if(res?.ok){toast('Removido.');loadAdminUsers();}else toast(res?.error||'Erro.','red');
+}
+</script>
+</body>
+</html>
