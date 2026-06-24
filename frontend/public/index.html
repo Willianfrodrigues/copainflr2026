@@ -366,6 +366,27 @@ tbody td{padding:11px 15px;font-size:13px;}
         <div class="organico-note" style="margin-top:8px;">⚠️ Deixe em branco as abas que ainda não estão prontas.</div>
       </div>
 
+      <!-- PLANILHA EXTRA (KWAI / outros) -->
+      <div class="adm-section">
+        <div class="adm-section-ttl">📥 Importar Dados de Planilha (Kwai / Extra)</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
+          Cole os dados no Google Sheets com as colunas obrigatórias:
+          <strong style="color:var(--gold);">date | platform | CAMPAIGN_NAME | AD_NAME | INFLUENCIADOR | IMPRESSIONS | CLICKS | THRUPLAY</strong>.
+          Publique como CSV: <strong style="color:var(--gold);">Arquivo → Compartilhar → Publicar na Web → selecione a aba → CSV → Publicar</strong>.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;background:var(--bg2);padding:16px;border-radius:10px;border:1px solid var(--border);">
+          <div class="af">
+            <label>URL da Planilha de Mídia Extra (CSV publicado)</label>
+            <input id="sheets-data-url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" style="width:100%;">
+          </div>
+          <button class="btn-g" onclick="saveSheetsDataUrl()" style="height:38px;white-space:nowrap;">💾 Salvar URL</button>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+          <button class="btn-gold" onclick="testSheetsDataUrl()" style="font-size:12px;padding:7px 14px;">🔍 Testar Planilha</button>
+          <span id="sheets-data-status" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+
       <!-- USUÁRIOS -->
       <div class="adm-section">
         <div class="adm-section-ttl">👥 Usuários</div>
@@ -543,12 +564,44 @@ async function saveCampConfig(){
     {nome:$('c2-nome').value.trim(),kw:$('c2-kw').value.trim().toUpperCase(),click:$('c2-click').value},
     {nome:$('c3-nome').value.trim(),kw:$('c3-kw').value.trim().toUpperCase(),click:$('c3-click').value},
   ];
-  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({camps:cfg,sheets_url:''})});
+  const sheets_data_url = ($('sheets-data-url')?.value||'').trim();
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps:cfg, sheets_url:'', sheets_data_url
+  })});
   if(res && res.ok){
     _campConfigCache = cfg;
     toast('Configuração salva!');
   } else {
     toast(res?.error||'Erro ao salvar.','red');
+  }
+}
+
+async function saveSheetsDataUrl(){
+  const url = ($('sheets-data-url')?.value||'').trim();
+  const cfg = _campConfigCache || getCampConfig();
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps: cfg, sheets_url: '', sheets_data_url: url
+  })});
+  if(res && res.ok) toast('URL da planilha salva!');
+  else toast(res?.error||'Erro ao salvar.','red');
+}
+
+async function testSheetsDataUrl(){
+  const statusEl = $('sheets-data-status');
+  if(statusEl) statusEl.textContent = '⏳ Testando...';
+  const url = ($('sheets-data-url')?.value||'').trim();
+  if(!url){ if(statusEl) statusEl.textContent='⚠️ URL vazia.'; return; }
+  // Testa buscando dados do mês atual
+  const today = new Date().toISOString().split('T')[0];
+  const start = today.substring(0,7)+'-01';
+  const res = await apiFetch('/api/data?type=kpi&start_date='+start+'&end_date='+today);
+  if(res && !res.error){
+    const imp = Number(res.impressions||0);
+    if(statusEl) statusEl.textContent = imp > 0
+      ? '✅ OK! '+imp.toLocaleString('pt-BR')+' impressões encontradas (BQ + planilha)'
+      : '⚠️ URL salva, mas nenhuma impressão no período. Verifique os dados.';
+  } else {
+    if(statusEl) statusEl.textContent = '❌ Erro: '+(res?.error||'falha na requisição');
   }
 }
 
@@ -563,6 +616,10 @@ async function loadCampConfigToForm(){
   });
   // Load 4 sheets URLs
   const su = data.sheets_urls||{};
+
+  // Carrega URL da planilha extra
+  const sduEl = $('sheets-data-url');
+  if(sduEl && data?.sheets_data_url) sduEl.value = data.sheets_data_url;
 
   // Avisa admin se a config ainda não foi salva no servidor
   const savedOnServer = cfg.some(c=>c.kw && c.kw.trim());
