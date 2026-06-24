@@ -303,9 +303,12 @@ class handler(BaseHTTPRequestHandler):
 
             camp_filter = build_campaign_filter(user)
             srows       = _get_sheet_rows(user, start, end)
+            # Debug: add sheet row count to response
+            _sheet_debug = {"_sheet_rows": len(srows), "_sheet_sample": str(srows[:1])[:200] if srows else "empty"}
 
             if type_ == "kpi":
                 result = _merge_kpi(get_kpi(camp_filter, start, end), srows)
+                result.update(_sheet_debug)
             elif type_ == "timeseries":
                 result = {"rows": _merge_timeseries(get_timeseries(camp_filter, start, end), srows)}
             elif type_ == "by_campaign":
