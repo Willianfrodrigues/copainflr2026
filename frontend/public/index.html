@@ -124,6 +124,7 @@ tbody td{padding:11px 15px;font-size:13px;}
 .plt-meta{background:rgba(59,91,219,.2);color:#7B9BFF;}
 .plt-tiktok{background:rgba(255,255,255,.08);color:var(--text);}
 .plt-other{background:rgba(230,81,0,.15);color:#FF8A50;}
+.plt-kwai{background:rgba(255,165,0,.15);color:#FFA500;}
 
 /* ORGÂNICO */
 .organico-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
@@ -366,6 +367,27 @@ tbody td{padding:11px 15px;font-size:13px;}
         <div class="organico-note" style="margin-top:8px;">⚠️ Deixe em branco as abas que ainda não estão prontas.</div>
       </div>
 
+      <!-- PLANILHA EXTRA (KWAI / outros) -->
+      <div class="adm-section">
+        <div class="adm-section-ttl">📥 Importar Dados de Planilha (Kwai / Extra)</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">
+          Cole os dados no Google Sheets com as colunas obrigatórias:
+          <strong style="color:var(--gold);">date | platform | CAMPAIGN_NAME | AD_NAME | INFLUENCIADOR | IMPRESSIONS | CLICKS | THRUPLAY</strong>.
+          Publique como CSV: <strong style="color:var(--gold);">Arquivo → Compartilhar → Publicar na Web → selecione a aba → CSV → Publicar</strong>.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;background:var(--bg2);padding:16px;border-radius:10px;border:1px solid var(--border);">
+          <div class="af">
+            <label>URL da Planilha de Mídia Extra (CSV publicado)</label>
+            <input id="sheets-data-url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" style="width:100%;">
+          </div>
+          <button class="btn-g" onclick="saveSheetsDataUrl()" style="height:38px;white-space:nowrap;">💾 Salvar URL</button>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+          <button class="btn-gold" onclick="testSheetsDataUrl()" style="font-size:12px;padding:7px 14px;">🔍 Testar Planilha</button>
+          <span id="sheets-data-status" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+
       <!-- USUÁRIOS -->
       <div class="adm-section">
         <div class="adm-section-ttl">👥 Usuários</div>
@@ -543,12 +565,44 @@ async function saveCampConfig(){
     {nome:$('c2-nome').value.trim(),kw:$('c2-kw').value.trim().toUpperCase(),click:$('c2-click').value},
     {nome:$('c3-nome').value.trim(),kw:$('c3-kw').value.trim().toUpperCase(),click:$('c3-click').value},
   ];
-  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({camps:cfg,sheets_url:''})});
+  const sheets_data_url = ($('sheets-data-url')?.value||'').trim();
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps:cfg, sheets_url:'', sheets_data_url
+  })});
   if(res && res.ok){
     _campConfigCache = cfg;
     toast('Configuração salva!');
   } else {
     toast(res?.error||'Erro ao salvar.','red');
+  }
+}
+
+async function saveSheetsDataUrl(){
+  const url = ($('sheets-data-url')?.value||'').trim();
+  const cfg = _campConfigCache || getCampConfig();
+  const res = await apiFetch('/api/config',{method:'POST',body:JSON.stringify({
+    camps: cfg, sheets_url: '', sheets_data_url: url
+  })});
+  if(res && res.ok) toast('URL da planilha salva!');
+  else toast(res?.error||'Erro ao salvar.','red');
+}
+
+async function testSheetsDataUrl(){
+  const statusEl = $('sheets-data-status');
+  if(statusEl) statusEl.textContent = '⏳ Testando...';
+  const url = ($('sheets-data-url')?.value||'').trim();
+  if(!url){ if(statusEl) statusEl.textContent='⚠️ URL vazia.'; return; }
+  // Testa buscando dados do mês atual
+  const today = new Date().toISOString().split('T')[0];
+  const start = today.substring(0,7)+'-01';
+  const res = await apiFetch('/api/data?type=kpi&start_date='+start+'&end_date='+today);
+  if(res && !res.error){
+    const imp = Number(res.impressions||0);
+    if(statusEl) statusEl.textContent = imp > 0
+      ? '✅ OK! '+imp.toLocaleString('pt-BR')+' impressões encontradas (BQ + planilha)'
+      : '⚠️ URL salva, mas nenhuma impressão no período. Verifique os dados.';
+  } else {
+    if(statusEl) statusEl.textContent = '❌ Erro: '+(res?.error||'falha na requisição');
   }
 }
 
@@ -563,6 +617,10 @@ async function loadCampConfigToForm(){
   });
   // Load 4 sheets URLs
   const su = data.sheets_urls||{};
+
+  // Carrega URL da planilha extra
+  const sduEl = $('sheets-data-url');
+  if(sduEl && data?.sheets_data_url) sduEl.value = data.sheets_data_url;
 
   // Avisa admin se a config ainda não foi salva no servidor
   const savedOnServer = cfg.some(c=>c.kw && c.kw.trim());
@@ -1203,7 +1261,16 @@ function renderKPIs(k){
   // Soma impressões orgânicas (apenas campanhas: florida, bra, rr — não Dados Gerais)
   let orgImp=0;
   if(typeof _orgData !== 'undefined'){
-    getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{ orgImp+=getSheetTotals(_orgData[s.id]).imp; });
+    // Só soma orgânicos das planilhas que o usuário tem acesso
+    getAllSheets().filter(s=>s.id!=='geral').forEach(s=>{
+      const rows=_orgData[s.id];
+      if(!rows) return;
+      // Verifica se o nome da sheet bate com as campanhas do usuário
+      const uKws=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
+      const sheetLabel=(s.label||'').toUpperCase();
+      if(uKws.length>0 && !uKws.some(kw=>sheetLabel.includes(kw))) return;
+      orgImp+=getSheetTotals(rows).imp;
+    });
   }
   const totalImp = (Number(k.impressions)||0) + orgImp;
   let orgClk=0;
@@ -1247,8 +1314,8 @@ const mC=Math.max(...filtered.map(r=>getClk(r)),1);
   const mT=Math.max(...filtered.map(r=>r.thruplay||0),1);
   $('c-tbody').innerHTML=filtered.map(row=>{
     const p=(row.platform||'').toLowerCase();
-    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':'other';
-    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':row.platform||'—';
+    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':p.includes('kwai')?'kwai':'other';
+    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':p.includes('kwai')?'🟨 Kwai':row.platform||'—';
     return`<tr><td style="max-width:260px;word-break:break-word;font-size:12px;">${row.CAMPAIGN_NAME||'—'}</td><td><span class="plt plt-${pc}">${pl}</span></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.impressions||0)/mI*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(row.impressions)}</span></div></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${(getClk(row)/mC*100).toFixed(1)}%;background:#1EC99B;"></div></div><span class="bar-v">${fmt(getClk(row))}</span></div></td><td>${fmtP(row.ctr)}</td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.thruplay||0)/mT*100).toFixed(1)}%;background:#3B82F6;"></div></div><span class="bar-v">${fmt(row.thruplay)}</span></div></td><td>${fmtP(row.vtr)}</td></tr>`;
   }).join('');
 }
@@ -1258,6 +1325,14 @@ function renderComparativo(rows,kpi){
   // Agrupa por campanha configurada
   const _uKwsC=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
   const _okC=kw=>{if(!_uKwsC.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKwsC.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
+  // Include all unique campaigns from API (including sheet data like Kwai)
+  const allCampsFromAPI = [...new Set(rows.map(r=>r.CAMPAIGN_NAME||'').filter(Boolean))];
+  const cfgKws = cfg.filter(c=>c.kw).map(c=>c.kw.toUpperCase());
+  // Add extra campaigns not covered by config (e.g. Kwai)
+  const extraCamps = allCampsFromAPI.filter(camp=>
+    !cfgKws.some(kw=>camp.toUpperCase().includes(kw)) && !userExcludesCamp(camp)
+  );
+
   const cards=cfg.map((c,i)=>{
     if(!c.kw||!_okC(c.kw))return null;
     const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));
@@ -1283,7 +1358,22 @@ function renderComparativo(rows,kpi){
     return;
   }
 
-  compareEl.innerHTML=cards.map(c=>{
+  // Add extra cards for sheet-only campaigns (Kwai etc)
+  const extraCards = extraCamps.map(campName => {
+    const campRows = rows.filter(r=>(r.CAMPAIGN_NAME||'')=== campName);
+    const imp = campRows.reduce((a,r)=>a+(r.impressions||0),0);
+    const clk = campRows.reduce((a,r)=>a+(r.clicks_link||r.clicks||0),0);
+    const tp  = campRows.reduce((a,r)=>a+(r.thruplay||0),0);
+    const v100= campRows.reduce((a,r)=>a+(r.views100||0),0);
+    const ctr = imp?((clk/imp)*100):0;
+    const vtr = imp?((tp/imp)*100):0;
+    const plat= [...new Set(campRows.map(r=>r.platform||''))].join(', ');
+    return {cfg:{nome:campName,kw:'',click:'clicks_link'}, color:'#FFA500',
+            data:{imp,clk,tp,v100,ctr,vtr,clickLabel:'Cliques no Link',plat}};
+  });
+  const allCards = [...cards, ...extraCards];
+
+  compareEl.innerHTML=allCards.map(c=>{
     const d=c.data;
     return`<div class="cmp-card" style="border-top:3px solid ${c.color};">
       <div class="cmp-head"><div class="cmp-name">${c.cfg.nome}</div><span style="font-size:11px;background:rgba(255,255,255,.06);padding:3px 8px;border-radius:20px;color:var(--muted);">${d.clickLabel}</span></div>
@@ -1323,8 +1413,8 @@ const INFL_COLS = [
   {key:'influenciador', label:'Influenciador', fmt:r=>r.influenciador||'—', sortable:true},
   {key:'platform',      label:'Plataforma',    fmt:r=>{
     const p=(r.platform||'').toLowerCase();
-    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':'other';
-    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':r.platform||'—';
+    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':p.includes('kwai')?'kwai':'other';
+    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':p.includes('kwai')?'🟨 Kwai':r.platform||'—';
     return `<span class="plt plt-${pc}">${pl}</span>`;
   }, sortable:true},
   {key:'impressions',   label:'Impressões',    fmt:(r,mx)=>`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((r.impressions||0)/mx.imp*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(r.impressions)}</span></div>`, sortable:true},
