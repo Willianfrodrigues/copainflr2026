@@ -124,6 +124,7 @@ tbody td{padding:11px 15px;font-size:13px;}
 .plt-meta{background:rgba(59,91,219,.2);color:#7B9BFF;}
 .plt-tiktok{background:rgba(255,255,255,.08);color:var(--text);}
 .plt-other{background:rgba(230,81,0,.15);color:#FF8A50;}
+.plt-kwai{background:rgba(255,165,0,.15);color:#FFA500;}
 
 /* ORGÂNICO */
 .organico-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
@@ -1304,8 +1305,8 @@ const mC=Math.max(...filtered.map(r=>getClk(r)),1);
   const mT=Math.max(...filtered.map(r=>r.thruplay||0),1);
   $('c-tbody').innerHTML=filtered.map(row=>{
     const p=(row.platform||'').toLowerCase();
-    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':'other';
-    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':row.platform||'—';
+    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':p.includes('kwai')?'kwai':'other';
+    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':p.includes('kwai')?'🟨 Kwai':row.platform||'—';
     return`<tr><td style="max-width:260px;word-break:break-word;font-size:12px;">${row.CAMPAIGN_NAME||'—'}</td><td><span class="plt plt-${pc}">${pl}</span></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.impressions||0)/mI*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(row.impressions)}</span></div></td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${(getClk(row)/mC*100).toFixed(1)}%;background:#1EC99B;"></div></div><span class="bar-v">${fmt(getClk(row))}</span></div></td><td>${fmtP(row.ctr)}</td><td><div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((row.thruplay||0)/mT*100).toFixed(1)}%;background:#3B82F6;"></div></div><span class="bar-v">${fmt(row.thruplay)}</span></div></td><td>${fmtP(row.vtr)}</td></tr>`;
   }).join('');
 }
@@ -1315,6 +1316,14 @@ function renderComparativo(rows,kpi){
   // Agrupa por campanha configurada
   const _uKwsC=(USER?.campaigns||[]).map(k=>k.trim().toUpperCase()).filter(Boolean);
   const _okC=kw=>{if(!_uKwsC.length||USER?.role==='admin')return true;const ck=kw.trim().toUpperCase();return _uKwsC.some(uk=>uk.includes('+')?uk.split('+').map(s=>s.trim()).every(p=>ck.includes(p)):ck.includes(uk)||uk.includes(ck));};
+  // Include all unique campaigns from API (including sheet data like Kwai)
+  const allCampsFromAPI = [...new Set(rows.map(r=>r.CAMPAIGN_NAME||'').filter(Boolean))];
+  const cfgKws = cfg.filter(c=>c.kw).map(c=>c.kw.toUpperCase());
+  // Add extra campaigns not covered by config (e.g. Kwai)
+  const extraCamps = allCampsFromAPI.filter(camp=>
+    !cfgKws.some(kw=>camp.toUpperCase().includes(kw)) && !userExcludesCamp(camp)
+  );
+
   const cards=cfg.map((c,i)=>{
     if(!c.kw||!_okC(c.kw))return null;
     const campRows=rows.filter(r=>(r.CAMPAIGN_NAME||'').toUpperCase().includes(c.kw));
@@ -1340,7 +1349,22 @@ function renderComparativo(rows,kpi){
     return;
   }
 
-  compareEl.innerHTML=cards.map(c=>{
+  // Add extra cards for sheet-only campaigns (Kwai etc)
+  const extraCards = extraCamps.map(campName => {
+    const campRows = rows.filter(r=>(r.CAMPAIGN_NAME||'')=== campName);
+    const imp = campRows.reduce((a,r)=>a+(r.impressions||0),0);
+    const clk = campRows.reduce((a,r)=>a+(r.clicks_link||r.clicks||0),0);
+    const tp  = campRows.reduce((a,r)=>a+(r.thruplay||0),0);
+    const v100= campRows.reduce((a,r)=>a+(r.views100||0),0);
+    const ctr = imp?((clk/imp)*100):0;
+    const vtr = imp?((tp/imp)*100):0;
+    const plat= [...new Set(campRows.map(r=>r.platform||''))].join(', ');
+    return {cfg:{nome:campName,kw:'',click:'clicks_link'}, color:'#FFA500',
+            data:{imp,clk,tp,v100,ctr,vtr,clickLabel:'Cliques no Link',plat}};
+  });
+  const allCards = [...cards, ...extraCards];
+
+  compareEl.innerHTML=allCards.map(c=>{
     const d=c.data;
     return`<div class="cmp-card" style="border-top:3px solid ${c.color};">
       <div class="cmp-head"><div class="cmp-name">${c.cfg.nome}</div><span style="font-size:11px;background:rgba(255,255,255,.06);padding:3px 8px;border-radius:20px;color:var(--muted);">${d.clickLabel}</span></div>
@@ -1380,8 +1404,8 @@ const INFL_COLS = [
   {key:'influenciador', label:'Influenciador', fmt:r=>r.influenciador||'—', sortable:true},
   {key:'platform',      label:'Plataforma',    fmt:r=>{
     const p=(r.platform||'').toLowerCase();
-    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':'other';
-    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':r.platform||'—';
+    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':p.includes('kwai')?'kwai':'other';
+    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':p.includes('kwai')?'🟨 Kwai':r.platform||'—';
     return `<span class="plt plt-${pc}">${pl}</span>`;
   }, sortable:true},
   {key:'impressions',   label:'Impressões',    fmt:(r,mx)=>`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((r.impressions||0)/mx.imp*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(r.impressions)}</span></div>`, sortable:true},
