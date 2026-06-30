@@ -855,11 +855,12 @@ function showOrgSheet(id){
         if(!r.some(c=>c)){_ec++;return;}
         if(_ec>=2) return;
         _ec=0;
-        const name=(r[iI>=0?iI:1]||'').trim();
-        if(!name||/total/i.test(name)) return;
+        const rawName=(r[iI>=0?iI:1]||'').trim();
+        if(!rawName||/total/i.test(rawName)) return;
+        const name=rawName.toLowerCase();
         const cont=(r[iC>=0?iC:0]||'').trim();
         const key=name+'||'+cont;
-        if(!merged[key]) merged[key]={influenciador:name,conteudo:cont,imp:0,view:0,clk:0,alc:0};
+        if(!merged[key]) merged[key]={influenciador:rawName,conteudo:cont,imp:0,view:0,clk:0,alc:0};
         merged[key].imp  += parseOrgNum(r[iImp>=0?iImp:3]||'');
         merged[key].view += parseOrgNum(r[iView>=0?iView:4]||'');
         merged[key].clk  += parseOrgNum(r[iClk>=0?iClk:5]||'');
@@ -1254,15 +1255,9 @@ function renderComparativo(rows,kpi){
 }
 const INFL_COLS = [
   {key:'influenciador', label:'Influenciador', fmt:r=>r.influenciador||'—', sortable:true},
-  {key:'platform',      label:'Plataforma',    fmt:r=>{
-    const p=(r.platform||'').toLowerCase();
-    const pc=p.includes('tiktok')?'tiktok':p.includes('meta')||p.includes('facebook')?'meta':p.includes('kwai')?'kwai':'other';
-    const pl=p.includes('tiktok')?'⬛ TikTok':p.includes('meta')||p.includes('facebook')?'🟦 Meta':p.includes('kwai')?'🟨 Kwai':r.platform||'—';
-    return `<span class="plt plt-${pc}">${pl}</span>`;
-  }, sortable:true},
   {key:'impressions',   label:'Impressões',    fmt:(r,mx)=>`<div class="bar-w"><div class="bar-bg"><div class="bar-f" style="width:${((r.impressions||0)/mx.imp*100).toFixed(1)}%;background:#F5C842;"></div></div><span class="bar-v">${fmt(r.impressions)}</span></div>`, sortable:true},
-  {key:'_click',        label:'Cliques',       fmt:r=>`<span style="font-weight:700;color:#1EC99B;">${fmt(r[getCampConfig().find(c=>c.kw)?.click||'clicks_link'])}</span>`, sortable:false},
-  {key:'_ctr',          label:'CTR',           fmt:r=>`<span style="font-weight:700;color:#EC4899;">${fmtP(r[(getCampConfig().find(c=>c.kw)?.click||'clicks_link')==='clicks_link'?'ctr_link':'ctr_click'])}</span>`, sortable:false},
+  {key:'_click',        label:'Cliques',       fmt:r=>`<span style="font-weight:700;color:#1EC99B;">${fmt(r.clicks_link)}</span>`, sortable:false},
+  {key:'_ctr',          label:'CTR',           fmt:r=>`<span style="font-weight:700;color:#EC4899;">${fmtP(r.impressions?(r.clicks_link/r.impressions*100):0)}</span>`, sortable:false},
   {key:'thruplay',      label:'ThruPlay',      fmt:r=>fmt(r.thruplay), sortable:true},
   {key:'vtr',           label:'VTR',           fmt:(r,mx)=>{
     const vtrColor=(r.vtr||0)>=15?'#1EC99B':(r.vtr||0)>=8?'#F5C842':'#F05A5A';
@@ -1280,12 +1275,33 @@ function populateInflCampFilter(){
 function getFilteredInflRows(){
   const search=($('infl-search')?.value||'').toLowerCase();
   const camp=$('infl-camp-filter')?.value||'';
-return allInflRows.filter(r=>{
+  const filtered = allInflRows.filter(r=>{
     if((r.impressions||0)===0) return false;
     const matchSearch=!search||(r.influenciador||'').toLowerCase().includes(search);
     const matchCamp=!camp||(r.CAMPAIGN_NAME||'')==camp;
     return matchSearch&&matchCamp;
   });
+  // Agrupa por influenciador (case-insensitive), somando todas as plataformas
+  const byInfl={};
+  filtered.forEach(r=>{
+    const rawName=(r.influenciador||'Sem Influenciador').trim();
+    const key=rawName.toLowerCase();
+    if(!byInfl[key]) byInfl[key]={
+      influenciador: rawName, impressions:0, clicks_link:0, clicks:0,
+      thruplay:0, views100:0, vtr_sum:0, vtr_count:0
+    };
+    byInfl[key].impressions += r.impressions||0;
+    byInfl[key].clicks_link += r.clicks_link||0;
+    byInfl[key].clicks      += r.clicks||0;
+    byInfl[key].thruplay    += r.thruplay||0;
+    byInfl[key].views100    += r.views100||0;
+    byInfl[key].vtr_sum     += r.vtr||0;
+    byInfl[key].vtr_count   += 1;
+  });
+  return Object.values(byInfl).map(r=>({
+    ...r,
+    vtr: r.vtr_count ? r.vtr_sum/r.vtr_count : 0
+  }));
 }
 
 function changeInflMetric(key){
@@ -1307,8 +1323,9 @@ function renderInflPodium(sorted){
 
   const byInfl={};
   sorted.forEach(r=>{
-    const k=r.influenciador||'Sem Influenciador';
-    if(!byInfl[k])byInfl[k]={influenciador:k,impressions:0,clicks_link:0,thruplay:0,vtr_sum:0,vtr_count:0,views100:0};
+    const rawName=(r.influenciador||'Sem Influenciador').trim();
+    const k=rawName.toLowerCase();
+    if(!byInfl[k])byInfl[k]={influenciador:rawName,impressions:0,clicks_link:0,thruplay:0,vtr_sum:0,vtr_count:0,views100:0};
     byInfl[k].impressions+=r.impressions||0;
     byInfl[k].clicks_link+=r.clicks_link||0;
     byInfl[k].thruplay+=r.thruplay||0;
